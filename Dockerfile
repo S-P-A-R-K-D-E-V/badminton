@@ -28,6 +28,8 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 # Prisma CLI — needed for migrate deploy at startup
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+# bcryptjs — needed for seed/admin scripts
+COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 
 COPY start.sh ./start.sh
 RUN chmod +x start.sh && chown -R spark:spark /app

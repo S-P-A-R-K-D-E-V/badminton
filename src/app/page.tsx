@@ -28,7 +28,12 @@ export default async function HomePage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Lịch chơi sắp tới</h1>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-2xl font-bold text-gray-900">Lịch chơi sắp tới</h1>
+        <Link href="/my-registrations" className="text-sm text-green-600 hover:underline">
+          Tra cứu đăng ký
+        </Link>
+      </div>
       <p className="text-gray-500 text-sm mb-6">Chọn buổi chơi để đăng ký</p>
 
       {sessions.length === 0 ? (

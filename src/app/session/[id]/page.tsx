@@ -114,6 +114,12 @@ export default function SessionPage() {
         >
           Về trang chủ
         </button>
+        <a
+          href="/my-registrations"
+          className="w-full py-2 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors text-center block mt-2"
+        >
+          Tra cứu đăng ký của tôi
+        </a>
       </div>
     )
   }

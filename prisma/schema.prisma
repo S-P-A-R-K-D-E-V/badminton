@@ -60,11 +60,10 @@ model Registration {
 }
 
 model Admin {
-  id        String    @id @default(cuid())
-  name      String
-  role      AdminRole @default(ADMIN)
+  id        String   @id @default(cuid())
+  username  String   @unique
   pinHash   String
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 }
 
 enum SessionStatus {
@@ -85,7 +84,3 @@ enum RegStatus {
   WAITLIST
 }
 
-enum AdminRole {
-  SUPER_ADMIN
-  ADMIN
-}

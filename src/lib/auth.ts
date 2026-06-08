@@ -13,7 +13,7 @@ export async function signIn(pin: string): Promise<boolean> {
   for (const admin of admins) {
     const ok = await bcrypt.compare(pin, admin.pinHash)
     if (ok) {
-      const token = await new SignJWT({ id: admin.id, role: admin.role })
+      const token = await new SignJWT({ id: admin.id })
         .setProtectedHeader({ alg: 'HS256' })
         .setExpirationTime('12h')
         .sign(SECRET)

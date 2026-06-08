@@ -15,7 +15,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             ⚙️ Admin
           </Link>
           <span className="text-gray-300">/</span>
-          <span className="text-sm text-gray-500">{admin.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Admin'}</span>
+          <span className="text-sm text-gray-500">Admin</span>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/" className="text-sm text-gray-500 hover:text-gray-700">

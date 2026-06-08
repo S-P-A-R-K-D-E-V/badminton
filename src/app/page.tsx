@@ -2,7 +2,7 @@ import { prisma } from '@/lib/db'
 import { formatDate, formatTime } from '@/lib/utils'
 import Link from 'next/link'
 
-export const revalidate = 30
+export const dynamic = 'force-dynamic'
 
 async function getSessions() {
   return prisma.session.findMany({

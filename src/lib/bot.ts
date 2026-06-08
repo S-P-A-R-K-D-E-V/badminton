@@ -1,0 +1,92 @@
+import { Bot } from 'grammy'
+import { formatDate, formatTime } from './utils'
+
+let bot: Bot | null = null
+
+export function getBot(): Bot | null {
+  const token = process.env.TELEGRAM_BOT_TOKEN
+  if (!token) return null
+  if (!bot) bot = new Bot(token)
+  return bot
+}
+
+const CHAT_ID = process.env.TELEGRAM_CHAT_ID ?? ''
+
+async function sendMessage(text: string) {
+  const b = getBot()
+  if (!b || !CHAT_ID) return
+  await b.api.sendMessage(CHAT_ID, text, { parse_mode: 'HTML' })
+}
+
+export async function notifyCourtStatus(
+  court: { name: string; maxSlots: number; warnAt: number },
+  currentCount: number
+) {
+  if (currentCount >= court.maxSlots) {
+    await sendMessage(
+      `🔴 <b>Sân ${court.name} đã đầy</b> (${currentCount}/${court.maxSlots} người)\nĐăng ký đã bị khóa.`
+    )
+  } else if (currentCount >= court.warnAt) {
+    await sendMessage(
+      `🟡 <b>Sân ${court.name} sắp đầy</b> (${currentCount}/${court.maxSlots} người)\nCòn ${court.maxSlots - currentCount} chỗ trống.`
+    )
+  }
+}
+
+export async function sendReminders() {
+  const { prisma } = await import('./db')
+  const { subHours, addHours, isWithinInterval } = await import('date-fns')
+
+  const now = new Date()
+  const windowStart = now
+  const windowEnd = addHours(now, 2.25) // check sessions starting in ~2h
+
+  const sessions = await prisma.session.findMany({
+    where: {
+      status: 'OPEN',
+      date: {
+        gte: new Date(now.toDateString()),
+        lte: new Date(windowEnd.toDateString()),
+      },
+    },
+    include: {
+      courts: {
+        include: {
+          registrations: {
+            where: { status: 'CONFIRMED', notified: false },
+            select: { id: true, playerName: true, registrantName: true, registrantPhone: true },
+          },
+        },
+      },
+    },
+  })
+
+  for (const session of sessions) {
+    const sessionStart = new Date(session.date)
+    sessionStart.setHours(session.startTime.getHours(), session.startTime.getMinutes())
+
+    const targetTime = subHours(sessionStart, 2)
+    if (!isWithinInterval(now, { start: targetTime, end: addHours(targetTime, 0.25) })) continue
+
+    const allRegistrations = session.courts.flatMap((c) => c.registrations)
+    if (allRegistrations.length === 0) continue
+
+    // Send group reminder
+    const totalPlayers = session.courts.reduce((sum, c) => sum + c.registrations.length, 0)
+    await sendMessage(
+      `🏸 <b>Nhắc nhở buổi chơi hôm nay!</b>\n\n` +
+        `📅 ${session.title}\n` +
+        `🕐 ${formatTime(session.startTime)} - ${formatTime(session.endTime)}\n` +
+        `📍 ${session.location}\n` +
+        `👥 ${totalPlayers} người đã đăng ký\n\n` +
+        `Buổi bắt đầu sau <b>2 tiếng</b> nữa!`
+    )
+
+    // Mark as notified
+    const ids = allRegistrations.map((r) => r.id)
+    await prisma.registration.updateMany({
+      where: { id: { in: ids } },
+      data: { notified: true },
+    })
+  }
+}

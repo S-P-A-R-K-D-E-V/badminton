@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: badminton-reminder
+  namespace: default
+spec:
+  schedule: "*/15 * * * *"  # every 15 minutes
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: remind
+              image: curlimages/curl:latest
+              command:
+                - sh
+                - -c
+                - |
+                  curl -sf -X GET \
+                    -H "x-cron-secret: $(CRON_SECRET)" \
+                    http://badminton-svc/api/cron/remind
+              env:
+                - name: CRON_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: badminton-secret
+                      key: CRON_SECRET

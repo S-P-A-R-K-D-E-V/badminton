@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id          String        @id @default(cuid())
+  title       String
+  date        DateTime      @db.Date
+  startTime   DateTime      @db.Time(0)
+  endTime     DateTime      @db.Time(0)
+  location    String
+  isRecurring Boolean       @default(false)
+  status      SessionStatus @default(OPEN)
+  createdBy   String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  courts      Court[]
+
+  @@index([date, status])
+}
+
+model Court {
+  id            String         @id @default(cuid())
+  sessionId     String
+  session       Session        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  name          String
+  maxSlots      Int            @default(10)
+  warnAt        Int            @default(8)
+  createdAt     DateTime       @default(now())
+  registrations Registration[]
+
+  @@index([sessionId])
+}
+
+model Registration {
+  id               String    @id @default(cuid())
+  courtId          String
+  court            Court     @relation(fields: [courtId], references: [id], onDelete: Cascade)
+  registrantName   String
+  registrantPhone  String
+  playerName       String
+  playerGender     Gender
+  playerRank       String    // "NB", "Y+", "TB--", "K++" etc.
+  isProxy          Boolean   @default(false)
+  cancelToken      String    @unique @default(cuid())
+  status           RegStatus @default(CONFIRMED)
+  notified         Boolean   @default(false)
+  registeredAt     DateTime  @default(now())
+  cancelledAt      DateTime?
+
+  @@index([courtId, status])
+  @@index([registrantPhone])
+  @@index([cancelToken])
+}
+
+model Admin {
+  id        String    @id @default(cuid())
+  name      String
+  role      AdminRole @default(ADMIN)
+  pinHash   String
+  createdAt DateTime  @default(now())
+}
+
+enum SessionStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum RegStatus {
+  CONFIRMED
+  CANCELLED
+  WAITLIST
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+}

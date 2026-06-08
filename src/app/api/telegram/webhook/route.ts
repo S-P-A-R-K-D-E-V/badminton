@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getBot } from '@/lib/bot'
 import { prisma } from '@/lib/db'
-import { formatDate, formatTime } from '@/lib/utils'
+import { formatTime } from '@/lib/utils'
 
 // Set up bot commands on first request
 let initialized = false

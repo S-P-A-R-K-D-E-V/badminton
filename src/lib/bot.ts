@@ -1,5 +1,5 @@
 import { Bot } from 'grammy'
-import { formatDate, formatTime } from './utils'
+import { formatTime } from './utils'
 
 let bot: Bot | null = null
 
@@ -38,7 +38,6 @@ export async function sendReminders() {
   const { subHours, addHours, isWithinInterval } = await import('date-fns')
 
   const now = new Date()
-  const windowStart = now
   const windowEnd = addHours(now, 2.25) // check sessions starting in ~2h
 
   const sessions = await prisma.session.findMany({

@@ -42,9 +42,7 @@ export default function SessionPage() {
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState<{ cancelToken: string; playerName: string }[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [selectedCourt, setSelectedCourt] = useState<string>('')
-
-  const { register, control, handleSubmit, formState: { errors }, watch } = useForm<RegisterInput>({
+  const { register, control, handleSubmit, formState: { errors } } = useForm<RegisterInput>({
     resolver: zodResolver(RegisterSchema),
     defaultValues: {
       registrantName: '',

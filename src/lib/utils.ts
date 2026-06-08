@@ -24,7 +24,7 @@ const MOD_ORDER: Record<string, number> = {
 }
 
 export function parseRank(rank: string): { base: string; mod: string } {
-  const match = rank.match(/^(NB|TBK|TBY|TB|Y|K)(\+\+|\+|--|-)?)$/)
+  const match = rank.match(/^(NB|TBK|TBY|TB|Y|K)(\+\+|\+|--|-)?$/)
   if (!match) return { base: 'TB', mod: '' }
   return { base: match[1], mod: match[2] ?? '' }
 }

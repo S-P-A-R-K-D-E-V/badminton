@@ -2,7 +2,7 @@ import { prisma } from '@/lib/db'
 import { formatDate, formatTime } from '@/lib/utils'
 import Link from 'next/link'
 
-export const revalidate = 30 // refresh every 30s
+export const revalidate = 30
 
 async function getSessions() {
   return prisma.session.findMany({
@@ -55,15 +55,9 @@ export default async function HomePage() {
                     <h2 className="font-semibold text-gray-900">{session.title}</h2>
                     <p className="text-sm text-gray-500 mt-0.5">{formatDate(session.date)}</p>
                   </div>
-                  <span
-                    className={`text-xs font-medium px-2 py-1 rounded-full shrink-0 ${
-                      isFull
-                        ? 'bg-red-100 text-red-700'
-                        : isWarn
-                        ? 'bg-yellow-100 text-yellow-700'
-                        : 'bg-green-100 text-green-700'
-                    }`}
-                  >
+                  <span className={`text-xs font-medium px-2 py-1 rounded-full shrink-0 ${
+                    isFull ? 'bg-red-100 text-red-700' : isWarn ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
+                  }`}>
                     {isFull ? 'Đã đầy' : isWarn ? 'Sắp đầy' : 'Còn chỗ'}
                   </span>
                 </div>
@@ -79,16 +73,11 @@ export default async function HomePage() {
                     const full = booked >= court.maxSlots
                     const warn = booked >= court.warnAt
                     return (
-                      <div
-                        key={court.id}
-                        className={`text-xs px-2 py-1 rounded-full border font-medium ${
-                          full
-                            ? 'border-red-200 bg-red-50 text-red-700'
-                            : warn
-                            ? 'border-yellow-200 bg-yellow-50 text-yellow-700'
-                            : 'border-gray-200 bg-gray-50 text-gray-600'
-                        }`}
-                      >
+                      <div key={court.id} className={`text-xs px-2 py-1 rounded-full border font-medium ${
+                        full ? 'border-red-200 bg-red-50 text-red-700'
+                          : warn ? 'border-yellow-200 bg-yellow-50 text-yellow-700'
+                          : 'border-gray-200 bg-gray-50 text-gray-600'
+                      }`}>
                         {court.name}: {booked}/{court.maxSlots}
                       </div>
                     )

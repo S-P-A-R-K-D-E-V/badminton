@@ -17,6 +17,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+RUN apk add --no-cache openssl
 RUN addgroup -S spark && adduser -S spark -G spark
 
 COPY --from=builder /app/public ./public

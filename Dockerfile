@@ -29,7 +29,7 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 
 COPY start.sh ./start.sh
-RUN chmod +x start.sh && chown spark:spark start.sh
+RUN chmod +x start.sh && chown -R spark:spark /app
 
 USER spark
 

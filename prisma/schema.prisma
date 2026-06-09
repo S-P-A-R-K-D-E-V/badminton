@@ -66,4 +66,51 @@ model Registration {
 model SessionCost {
   id              String   @id @default(cuid())
   sessionId       String   @unique
-  session       
+  session         Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  courtFee        Int      @default(0) // tiền sân (VNĐ)
+  shuttlecockCost Int      @default(0) // tiền cầu
+  supplyCost      Int      @default(0) // nước, băng, v.v.
+  otherCost       Int      @default(0) // chi phí khác
+  note            String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  pinHash   String
+  createdAt DateTime @default(now())
+}
+
+// Liên kết phone number với Telegram chat_id sau khi user /start bot
+model TelegramUser {
+  id        String   @id @default(cuid())
+  phone     String   @unique // normalized: digits only, no leading +
+  chatId    String   @unique // Telegram chat_id
+  firstName String?
+  username  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([phone])
+}
+
+enum SessionStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum RegStatus {
+  CONFIRMED
+  CANCELLED
+  WAITLIST
+}
+

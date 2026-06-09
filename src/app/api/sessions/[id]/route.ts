@@ -26,13 +26,27 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
           _count: {
             select: { registrations: { where: { status: 'CONFIRMED' } } },
           },
+          waitlist: {
+            where: { status: 'WAITLIST' },
+            select: { id: true },
+          },
         },
       },
     },
   })
 
   if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  return NextResponse.json(session)
+
+  // Map waitlist count per court
+  const response = {
+    ...session,
+    courts: session.courts.map((c) => ({
+      ...c,
+      waitlistCount: c.waitlist.length,
+      waitlist: undefined,
+    })),
+  }
+  return NextResponse.json(response)
 }
 
 // PUT /api/sessions/:id — admin only
@@ -72,11 +86,4 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   return NextResponse.json(session)
 }
 
-// DELETE /api/sessions/:id — admin only
-export async function DELETE(_: Request, { params }: { params: { id: string } }) {
-  const admin = await getAdmin()
-  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  await prisma.session.delete({ where: { id: params.id } })
-  return NextResponse.json({ ok: true })
-}
+// DELETE /api/sessions/:id 

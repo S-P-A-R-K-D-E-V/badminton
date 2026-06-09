@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { RegisterSchema } from '@/lib/validations'
-import { notifyCourtStatus } from '@/lib/bot'
+import { notifyCourtStatus, sendPersonalCancelLink } from '@/lib/bot'
 
 // POST /api/sessions/:id/register — public
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -13,11 +13,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const { registrantName, registrantPhone, courtId, players } = parsed.data
 
-  // Verify court belongs to this session and is open
   const court = await prisma.court.findFirst({
     where: { id: courtId, sessionId: params.id, session: { status: 'OPEN' } },
     include: {
-      _count: { select: { registrations: { where: { status: 'CONFIRMED' } } } },
+      _count: {
+        select: {
+          registrations: { where: { status: 'CONFIRMED' } },
+        },
+      },
     },
   })
 
@@ -25,23 +28,27 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'Sân không tồn tại hoặc buổi đã đóng' }, { status: 400 })
   }
 
-  const currentCount = court._count.registrations
-  const afterCount = currentCount + players.length
+  const confirmedCount = court._count.registrations
+  const availableSlots = court.maxSlots - confirmedCount
 
-  if (afterCount > court.maxSlots) {
-    return NextResponse.json(
-      {
-        error: `Sân ${court.name} chỉ còn ${court.maxSlots - currentCount} chỗ trống`,
-        availableSlots: court.maxSlots - currentCount,
-      },
-      { status: 409 }
-    )
+  // Determine status for each player
+  let confirmedPlayers = players.length
+  let waitlistPlayers = 0
+
+  if (availableSlots <= 0) {
+    // All go to waitlist
+    confirmedPlayers = 0
+    waitlistPlayers = players.length
+  } else if (players.length > availableSlots) {
+    // Partial: some confirmed, rest waitlisted
+    confirmedPlayers = availableSlots
+    waitlistPlayers = players.length - availableSlots
   }
 
-  // Create registrations in transaction
   const registrations = await prisma.$transaction(
-    players.map((p) =>
-      prisma.registration.create({
+    players.map((p, idx) => {
+      const status = idx < confirmedPlayers ? 'CONFIRMED' : 'WAITLIST'
+      return prisma.registration.create({
         data: {
           courtId,
           registrantName,
@@ -50,23 +57,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           playerGender: p.playerGender,
           playerRank: p.playerRank,
           isProxy: players.length > 1 || p.playerName !== registrantName,
+          status,
         },
         select: {
           id: true,
           cancelToken: true,
           playerName: true,
           playerRank: true,
+          status: true,
           court: { select: { name: true, session: { select: { title: true, date: true } } } },
         },
       })
-    )
+    })
   )
 
-  // Notify if threshold reached
-  const newCount = currentCount + players.length
-  if (newCount >= court.maxSlots || newCount >= court.warnAt) {
-    notifyCourtStatus(court, newCount).catch(console.error)
-  }
-
-  return NextResponse.json({ registrations }, { status: 201 })
-}
+  const newConfirmedCount = c

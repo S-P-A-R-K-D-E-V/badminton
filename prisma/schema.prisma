@@ -21,6 +21,7 @@ model Session {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   courts      Court[]
+  cost        SessionCost?
 
   @@index([date, status])
 }
@@ -51,6 +52,8 @@ model Registration {
   cancelToken      String    @unique @default(cuid())
   status           RegStatus @default(CONFIRMED)
   notified         Boolean   @default(false)
+  isPaid           Boolean   @default(false)
+  paidAt           DateTime?
   registeredAt     DateTime  @default(now())
   cancelledAt      DateTime?
 
@@ -59,28 +62,8 @@ model Registration {
   @@index([cancelToken])
 }
 
-model Admin {
-  id        String   @id @default(cuid())
-  username  String   @unique
-  pinHash   String
-  createdAt DateTime @default(now())
-}
-
-enum SessionStatus {
-  OPEN
-  CLOSED
-  CANCELLED
-}
-
-enum Gender {
-  MALE
-  FEMALE
-  OTHER
-}
-
-enum RegStatus {
-  CONFIRMED
-  CANCELLED
-  WAITLIST
-}
-
+// Chi phí của một buổi chơi — admin nhập sau khi buổi kết thúc
+model SessionCost {
+  id              String   @id @default(cuid())
+  sessionId       String   @unique
+  session       

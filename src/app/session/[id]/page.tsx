@@ -21,6 +21,7 @@ type CourtData = {
     registrantName: string
   }[]
   _count: { registrations: number }
+  waitlistCount?: number
 }
 
 type SessionData = {
@@ -40,13 +41,19 @@ export default function SessionPage() {
   const [session, setSession] = useState<SessionData | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [success, setSuccess] = useState<{ cancelToken: string; playerName: string }[] | null>(null)
+  const [success, setSuccess] = useState<{ cancelToken: string; playerName: string; status: string }[] | null>(null)
+  const [waitlistCount, setWaitlistCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
+
+  // Pre-fill từ localStorage
+  const savedName = typeof window !== 'undefined' ? localStorage.getItem('registrantName') ?? '' : ''
+  const savedPhone = typeof window !== 'undefined' ? localStorage.getItem('registrantPhone') ?? '' : ''
+
   const { register, control, handleSubmit, formState: { errors } } = useForm<RegisterInput>({
     resolver: zodResolver(RegisterSchema),
     defaultValues: {
-      registrantName: '',
-      registrantPhone: '',
+      registrantName: savedName,
+      registrantPhone: savedPhone,
       courtId: '',
       players: [{ playerName: '', playerGender: 'MALE', playerRank: 'TB' }],
     },
@@ -74,9 +81,14 @@ export default function SessionPage() {
       if (!res.ok) {
         setError(json.error ?? 'Đăng ký thất bại')
       } else {
-        setSuccess(json.registrations.map((r: { playerName: string; cancelToken: string }) => ({
+        // Lưu vào localStorage để pre-fill lần sau
+        localStorage.setItem('registrantName', data.registrantName)
+        localStorage.setItem('registrantPhone', data.registrantPhone)
+        setWaitlistCount(json.waitlistCount ?? 0)
+        setSuccess(json.registrations.map((r: { playerName: string; cancelToken: string; status: string }) => ({
           playerName: r.playerName,
           cancelToken: r.cancelToken,
+          status: r.status,
         })))
       }
     } catch {
@@ -92,13 +104,25 @@ export default function SessionPage() {
   if (success) {
     return (
       <div className="bg-white rounded-xl border shadow-sm p-6 text-center">
-        <div className="text-4xl mb-3">✅</div>
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Đăng ký thành công!</h2>
+        <div className="text-4xl mb-3">{waitlistCount > 0 && success?.every(r => r.status === 'WAITLIST') ? '⏳' : '✅'}</div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">
+          {waitlistCount > 0 && success?.every(r => r.status === 'WAITLIST') ? 'Đã vào hàng chờ!' : 'Đăng ký thành công!'}
+        </h2>
+        {waitlistCount > 0 && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800 mb-4">
+            ⚠️ Sân đầy — {waitlistCount} người đang trong hàng chờ. Bạn sẽ được confirm tự động khi có người hủy.
+          </div>
+        )}
         <p className="text-gray-500 text-sm mb-6">Lưu link hủy phòng khi cần (trước 2h)</p>
         <div className="flex flex-col gap-3 text-left mb-6">
           {success.map((r) => (
-            <div key={r.cancelToken} className="bg-gray-50 rounded-lg p-3">
-              <p className="font-medium text-gray-800">{r.playerName}</p>
+            <div key={r.cancelToken} className={`rounded-lg p-3 ${r.status === 'WAITLIST' ? 'bg-yellow-50 border border-yellow-200' : 'bg-gray-50'}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <p className="font-medium text-gray-800">{r.playerName}</p>
+                {r.status === 'WAITLIST' && (
+                  <span className="text-xs bg-yellow-200 text-yellow-800 px-1.5 py-0.5 rounded">Hàng chờ</span>
+                )}
+              </div>
               <a
                 href={`/cancel/${r.cancelToken}`}
                 className="text-xs text-red-500 hover:underline break-all"
@@ -149,7 +173,7 @@ export default function SessionPage() {
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                   full ? 'bg-red-100 text-red-700' : warn ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
                 }`}>
-                  {booked}/{court.maxSlots} {full ? '· Đầy' : warn ? '· Sắp đầy' : '· Còn chỗ'}
+                  {booked}/{court.maxSlots} {full ? `· Đầy${court.waitlistCount ? ` (${court.waitlistCount} chờ)` : ''}` : warn ? '· Sắp đầy' : '· Còn chỗ'}
                 </span>
               </div>
               {/* Slot grid */}
@@ -269,46 +293,4 @@ export default function SessionPage() {
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
                 />
                 {errors.players?.[idx]?.playerName && (
-                  <p className="text-red-500 text-xs">{errors.players[idx]?.playerName?.message}</p>
-                )}
-                <div className="grid grid-cols-2 gap-2">
-                  <select
-                    {...register(`players.${idx}.playerGender`)}
-                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
-                  >
-                    <option value="MALE">Nam</option>
-                    <option value="FEMALE">Nữ</option>
-                    <option value="OTHER">Khác</option>
-                  </select>
-                  <select
-                    {...register(`players.${idx}.playerRank`)}
-                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
-                  >
-                    {RANK_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </div>
-              </div>
-            ))}
-            {errors.players && typeof errors.players.message === 'string' && (
-              <p className="text-red-500 text-xs">{errors.players.message}</p>
-            )}
-          </div>
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full py-3 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors"
-          >
-            {submitting ? 'Đang đăng ký...' : 'Đăng ký tham gia'}
-          </button>
-        </form>
-      )}
-
-      {session.status === 'CLOSED' && (
-        <div className="bg-gray-100 rounded-xl p-4 text-center text-gray-500 text-sm">
-          Buổi chơi này đã đóng đăng ký
-        </div>
-      )}
-    </div>
-  )
-}
+                  <p class

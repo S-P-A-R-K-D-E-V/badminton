@@ -97,7 +97,7 @@ export default function MyRegistrationsPage() {
           <div className="flex flex-col gap-3">
             <p className="text-sm text-gray-500">{results.length} đăng ký</p>
             {results.map((r) => {
-              const canCancel = canCancelRegistration(r.session.date, r.session.startTime)
+              const canCancel = canCancelRegistration(new Date(r.session.date), new Date(r.session.startTime))
               const sessionClosed = r.session.status !== 'OPEN'
               return (
                 <div key={r.id} className="bg-white rounded-xl border shadow-sm p-4">

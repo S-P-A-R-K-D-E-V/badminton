@@ -33,6 +33,38 @@ export async function notifyCourtStatus(
   }
 }
 
+export async function sendPersonalCancelLink(
+  chatId: string,
+  registrations: { playerName: string; cancelToken: string; status: string }[],
+  sessionTitle: string,
+  courtName: string
+) {
+  const b = getBot()
+  if (!b) return
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://badminton.cici21chualang.vn'
+
+  const lines = registrations.map((r) => {
+    const statusBadge = r.status === 'WAITLIST' ? ' <i>(Hàng chờ)</i>' : ''
+    return `• <b>${r.playerName}</b>${statusBadge}\n  🔗 <a href="${appUrl}/cancel/${r.cancelToken}">Hủy đăng ký</a>`
+  })
+
+  await b.api.sendMessage(
+    chatId,
+    `✅ <b>Đăng ký thành công!</b>\n\n📋 ${sessionTitle}\n🏸 Sân ${courtName}\n\n${lines.join('\n\n')}\n\n<i>Lưu link hủy nếu cần hủy trước buổi chơi.</i>`,
+    { parse_mode: 'HTML', link_preview_options: { is_disabled: true } }
+  )
+}
+
+export async function notifyWaitlistPromoted(playerName: string, courtName: string, sessionTitle: string) {
+  await sendMessage(
+    `✅ <b>${playerName}</b> đã được vào sân!\n\n` +
+    `📋 ${sessionTitle}\n` +
+    `🏸 Sân ${courtName}\n\n` +
+    `Có người hủy nên bạn đã được chuyển từ hàng chờ sang confirmed.`
+  )
+}
+
 export async function sendReminders() {
   const { prisma } = await import('./db')
   const { subHours, addHours, isWithinInterval } = await import('date-fns')
@@ -53,39 +85,4 @@ export async function sendReminders() {
         include: {
           registrations: {
             where: { status: 'CONFIRMED', notified: false },
-            select: { id: true, playerName: true, registrantName: true, registrantPhone: true },
-          },
-        },
-      },
-    },
-  })
-
-  for (const session of sessions) {
-    const sessionStart = new Date(session.date)
-    sessionStart.setHours(session.startTime.getHours(), session.startTime.getMinutes())
-
-    const targetTime = subHours(sessionStart, 2)
-    if (!isWithinInterval(now, { start: targetTime, end: addHours(targetTime, 0.25) })) continue
-
-    const allRegistrations = session.courts.flatMap((c) => c.registrations)
-    if (allRegistrations.length === 0) continue
-
-    // Send group reminder
-    const totalPlayers = session.courts.reduce((sum, c) => sum + c.registrations.length, 0)
-    await sendMessage(
-      `🏸 <b>Nhắc nhở buổi chơi hôm nay!</b>\n\n` +
-        `📅 ${session.title}\n` +
-        `🕐 ${formatTime(session.startTime)} - ${formatTime(session.endTime)}\n` +
-        `📍 ${session.location}\n` +
-        `👥 ${totalPlayers} người đã đăng ký\n\n` +
-        `Buổi bắt đầu sau <b>2 tiếng</b> nữa!`
-    )
-
-    // Mark as notified
-    const ids = allRegistrations.map((r) => r.id)
-    await prisma.registration.updateMany({
-      where: { id: { in: ids } },
-      data: { notified: true },
-    })
-  }
-}
+            select: { id: true, playerName: true, registrantName: true, registr

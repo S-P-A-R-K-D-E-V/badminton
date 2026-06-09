@@ -24,11 +24,9 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
             orderBy: { registeredAt: 'asc' },
           },
           _count: {
-            select: { registrations: { where: { status: 'CONFIRMED' } } },
-          },
-          waitlist: {
-            where: { status: 'WAITLIST' },
-            select: { id: true },
+            select: {
+              registrations: { where: { status: 'CONFIRMED' } },
+            },
           },
         },
       },
@@ -37,13 +35,22 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 
   if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Map waitlist count per court
+  // Fetch waitlist counts separately
+  const waitlistCounts = await prisma.registration.groupBy({
+    by: ['courtId'],
+    where: {
+      courtId: { in: session.courts.map((c) => c.id) },
+      status: 'WAITLIST',
+    },
+    _count: { id: true },
+  })
+  const waitlistMap = Object.fromEntries(waitlistCounts.map((w) => [w.courtId, w._count.id]))
+
   const response = {
     ...session,
     courts: session.courts.map((c) => ({
       ...c,
-      waitlistCount: c.waitlist.length,
-      waitlist: undefined,
+      waitlistCount: waitlistMap[c.id] ?? 0,
     })),
   }
   return NextResponse.json(response)

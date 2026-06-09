@@ -85,4 +85,39 @@ export async function sendReminders() {
         include: {
           registrations: {
             where: { status: 'CONFIRMED', notified: false },
-            select: { id: true, playerName: true, registrantName: true, registr
+            select: { id: true, playerName: true, registrantName: true, registrantPhone: true },
+          },
+        },
+      },
+    },
+  })
+
+  for (const session of sessions) {
+    const sessionStart = new Date(session.date)
+    sessionStart.setHours(session.startTime.getHours(), session.startTime.getMinutes())
+
+    const targetTime = subHours(sessionStart, 2)
+    if (!isWithinInterval(now, { start: targetTime, end: addHours(targetTime, 0.25) })) continue
+
+    const allRegistrations = session.courts.flatMap((c) => c.registrations)
+    if (allRegistrations.length === 0) continue
+
+    // Send group reminder
+    const totalPlayers = session.courts.reduce((sum, c) => sum + c.registrations.length, 0)
+    await sendMessage(
+      `🏸 <b>Nhắc nhở buổi chơi hôm nay!</b>\n\n` +
+        `📅 ${session.title}\n` +
+        `🕐 ${formatTime(session.startTime)} - ${formatTime(session.endTime)}\n` +
+        `📍 ${session.location}\n` +
+        `👥 ${totalPlayers} người đã đăng ký\n\n` +
+        `Buổi bắt đầu sau <b>2 tiếng</b> nữa!`
+    )
+
+    // Mark as notified
+    const ids = allRegistrations.map((r) => r.id)
+    await prisma.registration.updateMany({
+      where: { id: { in: ids } },
+      data: { notified: true },
+    })
+  }
+}

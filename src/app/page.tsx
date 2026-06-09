@@ -91,4 +91,33 @@ export default async function HomePage({ searchParams }: { searchParams: { tab?:
         <Link
           href="/"
           className={`flex-1 text-center text-sm font-medium py-1.5 rounded-md transition-colors ${
-            !isPast ? 'bg-
+            !isPast ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Sắp tới
+        </Link>
+        <Link
+          href="/?tab=past"
+          className={`flex-1 text-center text-sm font-medium py-1.5 rounded-md transition-colors ${
+            isPast ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Đã qua
+        </Link>
+      </div>
+
+      {sessions.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">
+          <div className="text-5xl mb-3">🏸</div>
+          <p>{isPast ? 'Chưa có lịch sử buổi chơi' : 'Chưa có lịch chơi nào sắp tới'}</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {sessions.map((session) => (
+            <SessionCard key={session.id} session={session} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

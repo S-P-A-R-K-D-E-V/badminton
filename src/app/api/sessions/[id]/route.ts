@@ -86,4 +86,11 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   return NextResponse.json(session)
 }
 
-// DELETE /api/sessions/:id 
+// DELETE /api/sessions/:id — admin only
+export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+  const admin = await getAdmin()
+  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  await prisma.session.delete({ where: { id: params.id } })
+  return NextResponse.json({ ok: true })
+}

@@ -37,4 +37,15 @@ export default async function AdminSessionPage({ params }: { params: { id: strin
   if (!session) notFound()
 
   return (
-    <div className=
+    <div className="flex flex-col gap-5">
+      <div>
+        <h1 className="text-xl font-bold text-gray-900">{session.title}</h1>
+        <p className="text-sm text-gray-500 mt-0.5">
+          {formatDate(session.date)} · {formatTime(session.startTime)} – {formatTime(session.endTime)} · {session.location}
+        </p>
+      </div>
+
+      <AdminSessionClient session={JSON.parse(JSON.stringify(session))} />
+    </div>
+  )
+}

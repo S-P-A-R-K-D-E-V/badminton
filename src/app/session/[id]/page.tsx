@@ -293,4 +293,46 @@ export default function SessionPage() {
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
                 />
                 {errors.players?.[idx]?.playerName && (
-                  <p class
+                  <p className="text-red-500 text-xs">{errors.players[idx]?.playerName?.message}</p>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    {...register(`players.${idx}.playerGender`)}
+                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                  >
+                    <option value="MALE">Nam</option>
+                    <option value="FEMALE">Nữ</option>
+                    <option value="OTHER">Khác</option>
+                  </select>
+                  <select
+                    {...register(`players.${idx}.playerRank`)}
+                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                  >
+                    {RANK_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+              </div>
+            ))}
+            {errors.players && typeof errors.players.message === 'string' && (
+              <p className="text-red-500 text-xs">{errors.players.message}</p>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full py-3 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors"
+          >
+            {submitting ? 'Đang đăng ký...' : 'Đăng ký tham gia'}
+          </button>
+        </form>
+      )}
+
+      {session.status === 'CLOSED' && (
+        <div className="bg-gray-100 rounded-xl p-4 text-center text-gray-500 text-sm">
+          Buổi chơi này đã đóng đăng ký
+        </div>
+      )}
+    </div>
+  )
+}

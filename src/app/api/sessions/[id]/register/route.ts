@@ -71,4 +71,32 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     })
   )
 
-  const newConfirmedCount = c
+  const newConfirmedCount = confirmedCount + confirmedPlayers
+  if (newConfirmedCount >= court.maxSlots || newConfirmedCount >= court.warnAt) {
+    notifyCourtStatus(court, newConfirmedCount).catch(console.error)
+  }
+
+  // Gửi DM Telegram nếu registrantPhone đã liên kết
+  const normalizedPhone = registrantPhone.replace(/\D/g, '').replace(/^84/, '0')
+  prisma.telegramUser.findUnique({ where: { phone: normalizedPhone } })
+    .then((tgUser) => {
+      if (!tgUser) return
+      const firstReg = registrations[0]
+      sendPersonalCancelLink(
+        tgUser.chatId,
+        registrations.map((r) => ({ playerName: r.playerName, cancelToken: r.cancelToken, status: r.status })),
+        firstReg.court.session.title,
+        firstReg.court.name
+      )
+    })
+    .catch(console.error)
+
+  return NextResponse.json(
+    {
+      registrations,
+      waitlistCount: waitlistPlayers,
+      confirmedCount: confirmedPlayers,
+    },
+    { status: 201 }
+  )
+}

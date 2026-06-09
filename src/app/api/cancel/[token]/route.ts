@@ -49,4 +49,22 @@ export async function DELETE(_: Request, { params }: { params: { token: string }
     data: { status: 'CANCELLED', cancelledAt: new Date() },
   })
 
-  // Auto-promote first waitlist person if this was a CONFIR
+  // Auto-promote first waitlist person if this was a CONFIRMED slot
+  if (reg.status === 'CONFIRMED') {
+    const nextWaitlist = await prisma.registration.findFirst({
+      where: { courtId: reg.courtId, status: 'WAITLIST' },
+      orderBy: { registeredAt: 'asc' },
+    })
+
+    if (nextWaitlist) {
+      await prisma.registration.update({
+        where: { id: nextWaitlist.id },
+        data: { status: 'CONFIRMED' },
+      })
+      // Notify via Telegram group
+      notifyWaitlistPromoted(nextWaitlist.playerName, reg.court.name, reg.court.session.title).catch(console.error)
+    }
+  }
+
+  return NextResponse.json({ ok: true, message: `Đã hủy đăng ký cho ${reg.playerName}` })
+}

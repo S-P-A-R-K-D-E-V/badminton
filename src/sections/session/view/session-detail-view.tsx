@@ -8,6 +8,11 @@ import Stack from '@mui/material/Stack';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 
+import Link from '@mui/material/Link';
+
+import { paths } from 'src/routes/paths';
+import { RouterLink } from 'src/routes/components';
+
 import { Iconify } from 'src/components/iconify';
 import { EmptyContent } from 'src/components/empty-content';
 import { LoadingScreen } from 'src/components/loading-screen';
@@ -64,6 +69,23 @@ export function SessionDetailView({ id }: Props) {
 
   return (
     <Container maxWidth="sm" sx={{ py: 4 }}>
+      <Link
+        component={RouterLink}
+        href={paths.home}
+        underline="hover"
+        sx={{
+          mb: 2,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 0.5,
+          color: 'text.secondary',
+          typography: 'body2',
+        }}
+      >
+        <Iconify icon="eva:arrow-ios-back-fill" width={18} />
+        Lịch chơi
+      </Link>
+
       <Stack spacing={3}>
         <Card sx={{ p: 2.5 }}>
           <Typography variant="h5" sx={{ mb: 1 }}>

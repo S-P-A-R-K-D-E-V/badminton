@@ -23,6 +23,86 @@ export async function POST(req: Request) {
   }
 
   const update = await req.json()
+  const bot = getBot()
+
+  // ── Handle callback_query (inline keyboard button press) ──────────────
+  const cbq = update?.callback_query
+  if (cbq) {
+    const cbqId: string = cbq.id
+    const data: string = cbq.data ?? ''
+    const chatId = cbq.message?.chat?.id
+    const msgId: number = cbq.message?.message_id ?? 0
+
+    if (!bot) return NextResponse.json({ ok: true })
+
+    if (data.startsWith('pay_confirm:') || data.startsWith('pay_cancel:')) {
+      const colonIdx = data.indexOf(':')
+      const action = data.slice(0, colonIdx)
+      const reqId = data.slice(colonIdx + 1)
+
+      const payReq = await prisma.paymentRequest.findUnique({ where: { id: reqId } })
+
+      if (!payReq || payReq.status !== 'PENDING') {
+        await bot.api.answerCallbackQuery(cbqId, { text: 'Yêu cầu không tồn tại hoặc đã xử lý.' })
+        return NextResponse.json({ ok: true })
+      }
+
+      if (action === 'pay_confirm') {
+        await prisma.registration.updateMany({
+          where: { id: { in: payReq.registrationIds } },
+          data: { isPaid: true, paidAt: new Date() },
+        })
+        await prisma.paymentRequest.update({
+          where: { id: reqId },
+          data: { status: 'CONFIRMED', resolvedAt: new Date() },
+        })
+
+        if (chatId && msgId) {
+          try {
+            await bot.api.editMessageText(
+              chatId,
+              msgId,
+              `✅ <b>Đã xác nhận thanh toán</b>\n\n` +
+              `👤 <b>${payReq.name}</b> (${payReq.phone})\n` +
+              `💵 Tổng: <b>${payReq.totalAmount.toLocaleString('vi-VN')}đ</b>\n\n` +
+              `<i>Đã đánh dấu đã trả.</i>`,
+              { parse_mode: 'HTML' }
+            )
+          } catch { /* ignore edit errors */ }
+        }
+        await bot.api.answerCallbackQuery(cbqId, { text: '✅ Đã xác nhận!' })
+
+      } else {
+        await prisma.paymentRequest.update({
+          where: { id: reqId },
+          data: { status: 'REJECTED', resolvedAt: new Date() },
+        })
+
+        if (chatId && msgId) {
+          try {
+            await bot.api.editMessageText(
+              chatId,
+              msgId,
+              `❌ <b>Đã hủy xác nhận</b>\n\n` +
+              `👤 <b>${payReq.name}</b> (${payReq.phone})\n` +
+              `💵 Tổng: <b>${payReq.totalAmount.toLocaleString('vi-VN')}đ</b>\n\n` +
+              `<i>Chưa được xác nhận đã trả.</i>`,
+              { parse_mode: 'HTML' }
+            )
+          } catch { /* ignore edit errors */ }
+        }
+        await bot.api.answerCallbackQuery(cbqId, { text: '❌ Đã hủy' })
+      }
+
+      return NextResponse.json({ ok: true })
+    }
+
+    // Unknown callback
+    await bot.api.answerCallbackQuery(cbqId, {})
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── Handle regular message ────────────────────────────────────────────
   const message = update?.message
   if (!message) return NextResponse.json({ ok: true })
 
@@ -31,7 +111,6 @@ export async function POST(req: Request) {
   const firstName = message.from?.first_name ?? null
   const username = message.from?.username ?? null
 
-  const bot = getBot()
   if (!bot) return NextResponse.json({ ok: true })
 
   if (text.startsWith('/start')) {

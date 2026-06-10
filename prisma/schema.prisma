@@ -96,6 +96,27 @@ model TelegramUser {
   @@index([phone])
 }
 
+// Yêu cầu thanh toán gửi qua Telegram — admin xác nhận qua inline keyboard
+model PaymentRequest {
+  id              String       @id @default(cuid())
+  phone           String
+  name            String
+  registrationIds String[]
+  totalAmount     Int
+  status          PayReqStatus @default(PENDING)
+  telegramMsgId   Int?
+  createdAt       DateTime     @default(now())
+  resolvedAt      DateTime?
+
+  @@index([phone])
+}
+
+enum PayReqStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
 enum SessionStatus {
   OPEN
   CLOSED

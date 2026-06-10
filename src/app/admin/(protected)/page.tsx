@@ -1,8 +1,15 @@
-import { redirect } from 'next/navigation';
+import { getAdminStats } from '@/lib/admin-stats';
+
+import { OverviewView } from 'src/sections/admin/overview/view';
 
 // ----------------------------------------------------------------------
 
-// Tạm thời chuyển hướng sang danh sách buổi chơi; Phase 5 thay bằng dashboard tổng quan.
-export default function AdminPage() {
-  redirect('/admin/sessions');
+export const revalidate = 0;
+
+export const metadata = { title: 'Tổng quan | SPARK Badminton' };
+
+export default async function AdminOverviewPage() {
+  const stats = await getAdminStats();
+
+  return <OverviewView stats={stats} />;
 }

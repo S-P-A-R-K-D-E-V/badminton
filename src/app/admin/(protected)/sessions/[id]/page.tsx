@@ -1,9 +1,13 @@
-import { prisma } from '@/lib/db'
-import { notFound } from 'next/navigation'
-import { formatDate, formatTime } from '@/lib/utils'
-import AdminSessionClient from '@/components/AdminSessionClient'
+import { notFound } from 'next/navigation';
 
-export const revalidate = 0
+import { prisma } from '@/lib/db';
+import { formatDate, formatTime } from '@/lib/utils';
+
+import { AdminSessionDetailView } from 'src/sections/admin/session-detail/view';
+
+// ----------------------------------------------------------------------
+
+export const revalidate = 0;
 
 export default async function AdminSessionPage({ params }: { params: { id: string } }) {
   const session = await prisma.session.findUnique({
@@ -32,20 +36,17 @@ export default async function AdminSessionPage({ params }: { params: { id: strin
         },
       },
     },
-  })
+  });
 
-  if (!session) notFound()
+  if (!session) notFound();
+
+  const subtitle = `${formatDate(session.date)} · ${formatTime(session.startTime)} – ${formatTime(session.endTime)} · ${session.location}`;
 
   return (
-    <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">{session.title}</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          {formatDate(session.date)} · {formatTime(session.startTime)} – {formatTime(session.endTime)} · {session.location}
-        </p>
-      </div>
-
-      <AdminSessionClient session={JSON.parse(JSON.stringify(session))} />
-    </div>
-  )
+    <AdminSessionDetailView
+      session={JSON.parse(JSON.stringify(session))}
+      title={session.title}
+      subtitle={subtitle}
+    />
+  );
 }

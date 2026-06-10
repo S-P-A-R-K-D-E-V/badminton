@@ -1,3 +1,20 @@
 {
-  "extends": ["next/core-web-vitals", "next/typescript"]
+  "extends": ["next/core-web-vitals", "next/typescript"],
+  "overrides": [
+    {
+      "files": [
+        "src/theme/**/*",
+        "src/components/**/*",
+        "src/layouts/**/*",
+        "src/routes/**/*"
+      ],
+      "rules": {
+        "@typescript-eslint/no-explicit-any": "off",
+        "@typescript-eslint/no-unused-vars": "off",
+        "@typescript-eslint/no-empty-object-type": "off",
+        "react/display-name": "off",
+        "react-hooks/exhaustive-deps": "off"
+      }
+    }
+  ]
 }

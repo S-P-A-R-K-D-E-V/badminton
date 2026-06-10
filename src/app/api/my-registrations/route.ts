@@ -60,6 +60,7 @@ export async function GET(req: Request) {
 
       return {
         id: r.id,
+        sessionId: r.court.sessionId,
         playerName: r.playerName,
         isProxy: r.isProxy,
         cancelToken: r.cancelToken,

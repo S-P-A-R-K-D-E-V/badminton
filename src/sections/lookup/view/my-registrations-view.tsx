@@ -1,16 +1,16 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { isSameDay } from 'date-fns';
+import { useState, useMemo, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
-import Chip from '@mui/material/Chip';
 import Link from '@mui/material/Link';
 import Alert from '@mui/material/Alert';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
+import Divider from '@mui/material/Divider';
+import Collapse from '@mui/material/Collapse';
 import Checkbox from '@mui/material/Checkbox';
 import TextField from '@mui/material/TextField';
 import Container from '@mui/material/Container';
@@ -26,13 +26,13 @@ import { EmptyContent } from 'src/components/empty-content';
 
 import { formatDate, formatTime, canCancelRegistration } from '@/lib/utils';
 
-import { RegistrationCalendar } from '../registration-calendar';
 import { PaymentDialog } from '../payment-dialog';
 
 // ----------------------------------------------------------------------
 
 type RegResult = {
   id: string;
+  sessionId: string;
   playerName: string;
   isProxy: boolean;
   cancelToken: string;
@@ -50,14 +50,50 @@ type RegResult = {
   };
 };
 
+type SessionGroup = {
+  sessionId: string;
+  session: RegResult['session'];
+  registrations: RegResult[];
+  hasCost: boolean;
+  costPerPerson: number;
+  unpaidRegs: RegResult[];
+  paidRegs: RegResult[];
+};
+
+function groupBySessions(results: RegResult[]): SessionGroup[] {
+  const map = new Map<string, { session: RegResult['session']; regs: RegResult[] }>();
+  for (const r of results) {
+    if (!map.has(r.sessionId)) map.set(r.sessionId, { session: r.session, regs: [] });
+    map.get(r.sessionId)!.regs.push(r);
+  }
+  return Array.from(map.values())
+    .map(({ session, regs }) => {
+      const hasCost = regs[0]?.hasCost ?? false;
+      const costPerPerson = regs[0]?.costPerPerson ?? 0;
+      return {
+        sessionId: regs[0].sessionId,
+        session,
+        registrations: regs,
+        hasCost,
+        costPerPerson,
+        unpaidRegs: hasCost ? regs.filter((r) => !r.isPaid) : [],
+        paidRegs: regs.filter((r) => r.isPaid),
+      };
+    })
+    .sort((a, b) => new Date(b.session.date).getTime() - new Date(a.session.date).getTime());
+}
+
+// ----------------------------------------------------------------------
+
 export function MyRegistrationsView() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [results, setResults] = useState<RegResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [selectedSessions, setSelectedSessions] = useState<Set<string>>(new Set());
   const [paymentOpen, setPaymentOpen] = useState(false);
 
   async function handleSearch(e: React.FormEvent) {
@@ -65,8 +101,8 @@ export function MyRegistrationsView() {
     setLoading(true);
     setError(null);
     setResults(null);
-    setSelectedDate(null);
-    setSelected(new Set());
+    setExpanded(new Set());
+    setSelectedSessions(new Set());
     try {
       const res = await fetch(
         `/api/my-registrations?name=${encodeURIComponent(name)}&phone=${encodeURIComponent(phone)}`
@@ -81,26 +117,32 @@ export function MyRegistrationsView() {
     }
   }
 
-  const toggleSelect = useCallback((id: string) => {
-    setSelected((prev) => {
+  const groups = useMemo(() => (results ? groupBySessions(results) : []), [results]);
+
+  const toggleExpand = useCallback((sid: string) => {
+    setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(sid)) next.delete(sid);
+      else next.add(sid);
       return next;
     });
   }, []);
 
-  const filteredResults =
-    results && selectedDate
-      ? results.filter((r) => isSameDay(new Date(r.session.date), selectedDate))
-      : results;
+  const toggleSelectSession = useCallback((sid: string) => {
+    setSelectedSessions((prev) => {
+      const next = new Set(prev);
+      if (next.has(sid)) next.delete(sid);
+      else next.add(sid);
+      return next;
+    });
+  }, []);
 
-  // Registrations eligible for payment selection (hasCost + not yet paid)
-  const selectableIds = new Set(results?.filter((r) => r.hasCost && !r.isPaid).map((r) => r.id) ?? []);
-
-  const selectedRegs = results?.filter((r) => selected.has(r.id)) ?? [];
-
-  const totalSelected = selectedRegs.reduce((sum, r) => sum + r.costPerPerson, 0);
+  const selectedGroups = groups.filter((g) => selectedSessions.has(g.sessionId));
+  const selectedUnpaidRegs = selectedGroups.flatMap((g) => g.unpaidRegs);
+  const totalSelected = selectedGroups.reduce(
+    (sum, g) => sum + g.unpaidRegs.length * g.costPerPerson,
+    0
+  );
 
   return (
     <Container maxWidth="sm" sx={{ py: 4 }}>
@@ -114,6 +156,7 @@ export function MyRegistrationsView() {
           </Typography>
         </Box>
 
+        {/* Search form */}
         <Card component="form" onSubmit={handleSearch} sx={{ p: 2.5 }}>
           <Stack spacing={2}>
             <TextField
@@ -137,7 +180,6 @@ export function MyRegistrationsView() {
               type="submit"
               size="large"
               variant="contained"
-              color="primary"
               loading={loading}
             >
               Tra cứu
@@ -147,192 +189,247 @@ export function MyRegistrationsView() {
 
         {error && <Alert severity="error">{error}</Alert>}
 
-        {results !== null &&
-          (results.length === 0 ? (
+        {/* Results */}
+        {results !== null && (
+          groups.length === 0 ? (
             <EmptyContent title="Không tìm thấy đăng ký nào" sx={{ py: 6 }} />
           ) : (
-            <Stack spacing={2.5}>
-              {/* Calendar widget */}
-              <RegistrationCalendar
-                registrations={results}
-                selectedDate={selectedDate}
-                onSelectDate={setSelectedDate}
-              />
+            <Stack spacing={1.5} sx={{ pb: selectedSessions.size > 0 ? 10 : 0 }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                {groups.length} buổi · {results.length} đăng ký
+              </Typography>
 
-              {/* Result count + active filter chip */}
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                  {selectedDate
-                    ? `${filteredResults?.length ?? 0} / ${results.length} đăng ký`
-                    : `${results.length} đăng ký`}
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                  {/* Select-all for eligible items in current view */}
-                  {selectableIds.size > 0 && (
-                    <Chip
-                      label={
-                        Array.from(selectableIds).every((id) => selected.has(id))
-                          ? 'Bỏ chọn tất cả'
-                          : 'Chọn tất cả chưa trả'
-                      }
-                      size="small"
-                      variant="outlined"
-                      onClick={() => {
-                        const ids = Array.from(selectableIds);
-                        const allSelected = ids.every((id) => selected.has(id));
-                        setSelected(allSelected ? new Set() : new Set(ids));
+              {groups.map((group) => {
+                const isExpanded = expanded.has(group.sessionId);
+                const isSelected = selectedSessions.has(group.sessionId);
+                const canSelect = group.hasCost && group.unpaidRegs.length > 0;
+
+                return (
+                  <Card
+                    key={group.sessionId}
+                    sx={{
+                      outline: isSelected ? '2px solid' : 'none',
+                      outlineColor: 'primary.main',
+                      transition: 'outline 0.15s',
+                    }}
+                  >
+                    {/* ── Clickable header ── */}
+                    <Box
+                      onClick={() => toggleExpand(group.sessionId)}
+                      sx={{
+                        p: 2.5,
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        '&:hover': { bgcolor: 'action.hover' },
+                        transition: 'background-color 0.15s',
                       }}
-                      sx={{ height: 24 }}
-                    />
-                  )}
-                  {selectedDate && (
-                    <Chip
-                      label="Xóa bộ lọc"
-                      size="small"
-                      onDelete={() => setSelectedDate(null)}
-                      onClick={() => setSelectedDate(null)}
-                      sx={{ height: 24 }}
-                    />
-                  )}
-                </Box>
-              </Box>
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+                        {/* Checkbox — stops click from propagating to header */}
+                        {canSelect ? (
+                          <Checkbox
+                            size="small"
+                            checked={isSelected}
+                            onChange={() => toggleSelectSession(group.sessionId)}
+                            onClick={(e) => e.stopPropagation()}
+                            sx={{ mt: 0.25, ml: -0.75, p: 0.75, flexShrink: 0 }}
+                          />
+                        ) : (
+                          <Box sx={{ width: 34, flexShrink: 0 }} />
+                        )}
 
-              {/* Registration cards */}
-              {filteredResults?.length === 0 ? (
-                <EmptyContent title="Không có đăng ký trong ngày này" sx={{ py: 4 }} />
-              ) : (
-                <Stack spacing={2} sx={{ pb: selected.size > 0 ? 10 : 0 }}>
-                  {filteredResults?.map((r) => {
-                    const canCancel = canCancelRegistration(
-                      new Date(r.session.date),
-                      new Date(r.session.startTime)
-                    );
-                    const sessionClosed = r.session.status !== 'OPEN';
-                    const isSelectable = r.hasCost && !r.isPaid;
-                    const isChecked = selected.has(r.id);
-
-                    return (
-                      <Card
-                        key={r.id}
-                        sx={{
-                          p: 2.5,
-                          outline: isChecked ? '2px solid' : 'none',
-                          outlineColor: 'primary.main',
-                          transition: 'outline 0.15s',
-                        }}
-                      >
-                        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
-                          {/* Checkbox for unpaid + cost-set registrations */}
-                          {isSelectable && (
-                            <Checkbox
-                              size="small"
-                              checked={isChecked}
-                              onChange={() => toggleSelect(r.id)}
-                              sx={{ mt: 0.25, ml: -1, p: 0.75 }}
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          {/* Title + expand icon */}
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              justifyContent: 'space-between',
+                              gap: 1,
+                            }}
+                          >
+                            <Typography variant="subtitle1" sx={{ lineHeight: 1.4 }}>
+                              {group.session.title}
+                            </Typography>
+                            <Iconify
+                              icon={
+                                isExpanded
+                                  ? 'eva:chevron-up-fill'
+                                  : 'eva:chevron-down-fill'
+                              }
+                              width={20}
+                              sx={{ flexShrink: 0, mt: 0.25, color: 'text.disabled' }}
                             />
-                          )}
+                          </Box>
 
-                          <Box sx={{ flex: 1, minWidth: 0 }}>
-                            {/* Header: name + action */}
-                            <Box
-                              sx={{
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                justifyContent: 'space-between',
-                                gap: 1,
-                                mb: 1.5,
-                              }}
-                            >
-                              <Box>
-                                <Typography variant="subtitle1">{r.playerName}</Typography>
-                                {r.isProxy && (
-                                  <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-                                    Đăng ký hộ
-                                  </Typography>
+                          {/* Date + location */}
+                          <Stack
+                            spacing={0.25}
+                            sx={{ mt: 0.5, typography: 'body2', color: 'text.secondary' }}
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Iconify icon="solar:calendar-outline" width={13} />
+                              {formatDate(group.session.date)} · {formatTime(group.session.startTime)}
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Iconify icon="mingcute:location-line" width={13} />
+                              {group.session.location}
+                            </Box>
+                          </Stack>
+
+                          {/* Summary: count + cost + status labels */}
+                          <Box
+                            sx={{
+                              mt: 1.25,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                              👥 {group.registrations.length} người đăng ký
+                            </Typography>
+
+                            {group.hasCost && (
+                              <>
+                                <Typography
+                                  variant="caption"
+                                  sx={{ color: 'text.disabled' }}
+                                >
+                                  ·
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                  💰 {group.costPerPerson.toLocaleString('vi-VN')}đ/người
+                                </Typography>
+                              </>
+                            )}
+                          </Box>
+
+                          {/* Payment status badges */}
+                          {group.hasCost &&
+                            (group.paidRegs.length > 0 || group.unpaidRegs.length > 0) && (
+                              <Box sx={{ mt: 0.75, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                                {group.paidRegs.length > 0 && (
+                                  <Label
+                                    variant="soft"
+                                    color="success"
+                                    sx={{ height: 20, fontSize: 10 }}
+                                  >
+                                    ✓ Đã trả ×{group.paidRegs.length}
+                                  </Label>
+                                )}
+                                {group.unpaidRegs.length > 0 && (
+                                  <Label
+                                    variant="soft"
+                                    color="warning"
+                                    sx={{ height: 20, fontSize: 10 }}
+                                  >
+                                    Chưa trả ×{group.unpaidRegs.length}
+                                  </Label>
                                 )}
                               </Box>
-                              {canCancel && !sessionClosed ? (
-                                <Link
-                                  component={RouterLink}
-                                  href={paths.cancel(r.cancelToken)}
-                                  variant="caption"
-                                  sx={{ color: 'error.main', flexShrink: 0 }}
-                                >
-                                  Hủy đăng ký
-                                </Link>
-                              ) : (
-                                <Label
-                                  variant="soft"
-                                  color="default"
-                                  sx={{ flexShrink: 0 }}
-                                >
-                                  {sessionClosed ? 'Đã đóng' : 'Hết hạn hủy'}
-                                </Label>
-                              )}
-                            </Box>
+                            )}
+                        </Box>
+                      </Box>
+                    </Box>
 
-                            {/* Session info */}
-                            <Stack
-                              spacing={0.25}
-                              sx={{ color: 'text.secondary', typography: 'body2' }}
-                            >
-                              <span>📋 {r.session.title}</span>
-                              <span>
-                                📅 {formatDate(r.session.date)} · {formatTime(r.session.startTime)}
-                              </span>
-                              <span>
-                                🏸 Sân {r.courtName} · 📍 {r.session.location}
-                              </span>
-                            </Stack>
+                    {/* ── Expanded: registration list ── */}
+                    <Collapse in={isExpanded}>
+                      <Divider />
+                      <Box sx={{ px: 2.5, py: 1.75 }}>
+                        <Stack spacing={1.25}>
+                          {group.registrations.map((r) => {
+                            const canCancel = canCancelRegistration(
+                              new Date(r.session.date),
+                              new Date(r.session.startTime)
+                            );
+                            const sessionClosed = r.session.status !== 'OPEN';
 
-                            {/* Cost + payment status */}
-                            {r.costPerPerson > 0 && (
+                            return (
                               <Box
+                                key={r.id}
                                 sx={{
-                                  mt: 1.25,
                                   display: 'flex',
                                   alignItems: 'center',
+                                  justifyContent: 'space-between',
                                   gap: 1,
-                                  flexWrap: 'wrap',
                                 }}
                               >
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                    {r.playerName}
+                                    {r.isProxy && (
+                                      <Box
+                                        component="span"
+                                        sx={{
+                                          typography: 'caption',
+                                          color: 'text.disabled',
+                                          ml: 0.5,
+                                        }}
+                                      >
+                                        (hộ)
+                                      </Box>
+                                    )}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                    Sân {r.courtName}
+                                  </Typography>
+                                </Box>
+
                                 <Box
                                   sx={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: 0.5,
-                                    typography: 'caption',
-                                    color: 'text.secondary',
+                                    gap: 0.75,
+                                    flexShrink: 0,
                                   }}
                                 >
-                                  <Iconify icon="solar:money-bag-linear" width={14} />
-                                  Chi phí:{' '}
-                                  <b style={{ color: 'inherit' }}>
-                                    {r.costPerPerson.toLocaleString('vi-VN')}đ
-                                  </b>
+                                  {group.hasCost && (
+                                    <Label
+                                      variant="soft"
+                                      color={r.isPaid ? 'success' : 'warning'}
+                                      sx={{ height: 20, fontSize: 10 }}
+                                    >
+                                      {r.isPaid ? 'Đã trả' : 'Chưa trả'}
+                                    </Label>
+                                  )}
+                                  {canCancel && !sessionClosed ? (
+                                    <Link
+                                      component={RouterLink}
+                                      href={paths.cancel(r.cancelToken)}
+                                      variant="caption"
+                                      sx={{ color: 'error.main' }}
+                                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                                    >
+                                      Hủy
+                                    </Link>
+                                  ) : (
+                                    <Label
+                                      variant="soft"
+                                      color="default"
+                                      sx={{ height: 20, fontSize: 10 }}
+                                    >
+                                      {sessionClosed ? 'Đã đóng' : 'Hết hạn'}
+                                    </Label>
+                                  )}
                                 </Box>
-                                <Label
-                                  variant="soft"
-                                  color={r.isPaid ? 'success' : 'warning'}
-                                  sx={{ height: 20, fontSize: 10 }}
-                                >
-                                  {r.isPaid ? '✓ Đã trả' : 'Chưa trả'}
-                                </Label>
                               </Box>
-                            )}
-                          </Box>
-                        </Box>
-                      </Card>
-                    );
-                  })}
-                </Stack>
-              )}
+                            );
+                          })}
+                        </Stack>
+                      </Box>
+                    </Collapse>
+                  </Card>
+                );
+              })}
             </Stack>
-          ))}
+          )
+        )}
       </Stack>
 
-      {/* ── Sticky payment bar (appears when items selected) ── */}
-      {selected.size > 0 && (
+      {/* ── Sticky payment bar ── */}
+      {selectedSessions.size > 0 && (
         <Paper
           elevation={8}
           sx={{
@@ -351,17 +448,15 @@ export function MyRegistrationsView() {
           }}
         >
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="subtitle2">{selected.size} đăng ký</Typography>
+            <Typography variant="subtitle2">
+              {selectedSessions.size} buổi · {selectedUnpaidRegs.length} đăng ký
+            </Typography>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               Tổng: {totalSelected.toLocaleString('vi-VN')}đ
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
-            <Button
-              size="small"
-              color="inherit"
-              onClick={() => setSelected(new Set())}
-            >
+            <Button size="small" color="inherit" onClick={() => setSelectedSessions(new Set())}>
               Bỏ chọn
             </Button>
             <Button
@@ -380,10 +475,10 @@ export function MyRegistrationsView() {
       <PaymentDialog
         open={paymentOpen}
         onClose={() => setPaymentOpen(false)}
-        selectedRegs={selectedRegs}
+        selectedRegs={selectedUnpaidRegs}
         name={name}
         phone={phone}
-        onSuccess={() => setSelected(new Set())}
+        onSuccess={() => setSelectedSessions(new Set())}
       />
     </Container>
   );

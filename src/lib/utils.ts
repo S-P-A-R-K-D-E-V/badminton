@@ -1,11 +1,5 @@
-import { clsx, type ClassValue } from 'clsx'
-import { twMerge } from 'tailwind-merge'
 import { format, isBefore, subHours } from 'date-fns'
 import { vi } from 'date-fns/locale'
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
 
 export function formatDate(date: Date | string) {
   return format(new Date(date), 'EEEE, dd/MM/yyyy', { locale: vi })

@@ -20,6 +20,7 @@ import { LayoutSection } from '../core/layout-section';
 import { HeaderSection } from '../core/header-section';
 import { navData as mainNavData } from '../nav-config-main';
 import { SettingsButton } from '../components/settings-button';
+import { MobileBottomNav } from 'src/components/mobile-nav/mobile-nav';
 
 import type { FooterProps } from './footer';
 import type { NavMainProps } from './nav/types';
@@ -119,25 +120,21 @@ export function MainLayout({
       <Footer sx={slotProps?.footer?.sx} layoutQuery={layoutQuery} />
     );
 
-  const renderMain = () => <MainSection {...slotProps?.main}>{children}</MainSection>;
+  const renderMain = () => (
+    <MainSection {...slotProps?.main} sx={{ pb: { xs: 8, md: 0 }, ...slotProps?.main?.sx }}>
+      {children}
+    </MainSection>
+  );
 
   return (
     <LayoutSection
-      /** **************************************
-       * @Header
-       *************************************** */
       headerSection={renderHeader()}
-      /** **************************************
-       * @Footer
-       *************************************** */
       footerSection={renderFooter()}
-      /** **************************************
-       * @Styles
-       *************************************** */
       cssVars={cssVars}
       sx={sx}
     >
       {renderMain()}
+      <MobileBottomNav />
     </LayoutSection>
   );
 }

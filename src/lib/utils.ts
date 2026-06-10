@@ -2,11 +2,16 @@ import { format, isBefore, subHours } from 'date-fns'
 import { vi } from 'date-fns/locale'
 
 export function formatDate(date: Date | string) {
-  return format(new Date(date), 'EEEE, dd/MM/yyyy', { locale: vi })
+  const d = new Date(date);
+  // Build local-time string from UTC parts to prevent timezone shift in date-fns format
+  const iso = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}T00:00:00`;
+  return format(new Date(iso), 'EEEE, dd/MM/yyyy', { locale: vi });
 }
 
 export function formatTime(time: Date | string) {
-  return format(new Date(time), 'HH:mm')
+  const d = new Date(time);
+  // Always use UTC hours — Prisma @db.Time is stored as UTC, this avoids client timezone drift
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
 // Rank system: NB, Y, TBY, TB, TBK, K với modifiers +, -, ++, --

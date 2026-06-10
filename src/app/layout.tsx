@@ -1,28 +1,67 @@
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-import './globals.css'
+import 'src/global.css';
+import './globals.css';
 
-const inter = Inter({ subsets: ['latin', 'vietnamese'] })
+import type { Metadata, Viewport } from 'next';
+
+import InitColorSchemeScript from '@mui/material/InitColorSchemeScript';
+import { AppRouterCacheProvider } from '@mui/material-nextjs/v14-appRouter';
+
+import { primary } from 'src/theme/core/palette';
+import { themeConfig, ThemeProvider } from 'src/theme';
+
+import { Snackbar } from 'src/components/snackbar';
+import { ProgressBar } from 'src/components/progress-bar';
+import { MotionLazy } from 'src/components/animate/motion-lazy';
+import { detectSettings } from 'src/components/settings/server';
+import { SettingsDrawer, defaultSettings, SettingsProvider } from 'src/components/settings';
+
+// ----------------------------------------------------------------------
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: primary.main,
+};
 
 export const metadata: Metadata = {
   title: 'SPARK Badminton',
   description: 'Đăng ký lịch chơi cầu lông SPARK',
-}
+};
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+// ----------------------------------------------------------------------
+
+type RootLayoutProps = {
+  children: React.ReactNode;
+};
+
+export default async function RootLayout({ children }: RootLayoutProps) {
+  const cookieSettings = await detectSettings();
+
   return (
-    <html lang="vi">
-      <body className={`${inter.className} bg-gray-50 min-h-screen`}>
-        <header className="bg-white border-b shadow-sm sticky top-0 z-10">
-          <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-2">
-            <span className="text-2xl">🏸</span>
-            <a href="/" className="font-bold text-lg text-gray-900 hover:text-green-600 transition-colors">
-              SPARK Badminton
-            </a>
-          </div>
-        </header>
-        <main className="max-w-3xl mx-auto px-4 py-6">{children}</main>
+    <html lang="vi" suppressHydrationWarning>
+      <body>
+        <InitColorSchemeScript
+          defaultMode={themeConfig.defaultMode}
+          modeStorageKey={themeConfig.modeStorageKey}
+          attribute={themeConfig.cssVariables.colorSchemeSelector}
+        />
+
+        <SettingsProvider cookieSettings={cookieSettings} defaultSettings={defaultSettings}>
+          <AppRouterCacheProvider options={{ key: 'css' }}>
+            <ThemeProvider
+              defaultMode={themeConfig.defaultMode}
+              modeStorageKey={themeConfig.modeStorageKey}
+            >
+              <MotionLazy>
+                <Snackbar />
+                <ProgressBar />
+                <SettingsDrawer defaultSettings={defaultSettings} />
+                {children}
+              </MotionLazy>
+            </ThemeProvider>
+          </AppRouterCacheProvider>
+        </SettingsProvider>
       </body>
     </html>
-  )
+  );
 }

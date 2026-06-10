@@ -1,33 +1,8 @@
-import { prisma } from '@/lib/db'
-import CreateSessionButton from '@/components/CreateSessionButton'
-import AdminSessionList from '@/components/AdminSessionList'
+import { redirect } from 'next/navigation';
 
-export const revalidate = 0
+// ----------------------------------------------------------------------
 
-async function getSessions() {
-  return prisma.session.findMany({
-    include: {
-      courts: {
-        include: {
-          _count: { select: { registrations: { where: { status: 'CONFIRMED' } } } },
-        },
-      },
-    },
-    orderBy: [{ date: 'desc' }],
-    take: 20,
-  })
-}
-
-export default async function AdminPage() {
-  const sessions = await getSessions()
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Quản lý buổi chơi</h1>
-        <CreateSessionButton />
-      </div>
-      <AdminSessionList sessions={JSON.parse(JSON.stringify(sessions))} />
-    </div>
-  )
+// Tạm thời chuyển hướng sang danh sách buổi chơi; Phase 5 thay bằng dashboard tổng quan.
+export default function AdminPage() {
+  redirect('/admin/sessions');
 }

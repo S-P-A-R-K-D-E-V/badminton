@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { isSameDay } from 'date-fns';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import Chip from '@mui/material/Chip';
 import Link from '@mui/material/Link';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
@@ -19,6 +21,8 @@ import { Label } from 'src/components/label';
 import { EmptyContent } from 'src/components/empty-content';
 
 import { formatDate, formatTime, canCancelRegistration } from '@/lib/utils';
+
+import { RegistrationCalendar } from '../registration-calendar';
 
 // ----------------------------------------------------------------------
 
@@ -44,12 +48,14 @@ export function MyRegistrationsView() {
   const [results, setResults] = useState<RegResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setResults(null);
+    setSelectedDate(null);
     try {
       const res = await fetch(
         `/api/my-registrations?name=${encodeURIComponent(name)}&phone=${encodeURIComponent(phone)}`
@@ -63,6 +69,11 @@ export function MyRegistrationsView() {
       setLoading(false);
     }
   }
+
+  const filteredResults =
+    results && selectedDate
+      ? results.filter((r) => isSameDay(new Date(r.session.date), selectedDate))
+      : results;
 
   return (
     <Container maxWidth="sm" sx={{ py: 4 }}>
@@ -113,62 +124,94 @@ export function MyRegistrationsView() {
           (results.length === 0 ? (
             <EmptyContent title="Không tìm thấy đăng ký nào" sx={{ py: 6 }} />
           ) : (
-            <Stack spacing={2}>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {results.length} đăng ký
-              </Typography>
-              {results.map((r) => {
-                const canCancel = canCancelRegistration(
-                  new Date(r.session.date),
-                  new Date(r.session.startTime)
-                );
-                const sessionClosed = r.session.status !== 'OPEN';
-                return (
-                  <Card key={r.id} sx={{ p: 2.5 }}>
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        justifyContent: 'space-between',
-                        gap: 1,
-                        mb: 1.5,
-                      }}
-                    >
-                      <Box>
-                        <Typography variant="subtitle1">{r.playerName}</Typography>
-                        {r.isProxy && (
-                          <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-                            Đăng ký hộ
-                          </Typography>
-                        )}
-                      </Box>
-                      {canCancel && !sessionClosed ? (
-                        <Link
-                          component={RouterLink}
-                          href={paths.cancel(r.cancelToken)}
-                          variant="caption"
-                          sx={{ color: 'error.main', flexShrink: 0 }}
+            <Stack spacing={2.5}>
+              {/* Calendar widget */}
+              <RegistrationCalendar
+                registrations={results}
+                selectedDate={selectedDate}
+                onSelectDate={setSelectedDate}
+              />
+
+              {/* Result count + active filter chip */}
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                  {selectedDate
+                    ? `${filteredResults?.length ?? 0} / ${results.length} đăng ký`
+                    : `${results.length} đăng ký`}
+                </Typography>
+                {selectedDate && (
+                  <Chip
+                    label="Xóa bộ lọc"
+                    size="small"
+                    onDelete={() => setSelectedDate(null)}
+                    onClick={() => setSelectedDate(null)}
+                    sx={{ height: 22 }}
+                  />
+                )}
+              </Box>
+
+              {/* Registration cards */}
+              {filteredResults?.length === 0 ? (
+                <EmptyContent title="Không có đăng ký trong ngày này" sx={{ py: 4 }} />
+              ) : (
+                <Stack spacing={2}>
+                  {filteredResults?.map((r) => {
+                    const canCancel = canCancelRegistration(
+                      new Date(r.session.date),
+                      new Date(r.session.startTime)
+                    );
+                    const sessionClosed = r.session.status !== 'OPEN';
+                    return (
+                      <Card key={r.id} sx={{ p: 2.5 }}>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            justifyContent: 'space-between',
+                            gap: 1,
+                            mb: 1.5,
+                          }}
                         >
-                          Hủy đăng ký
-                        </Link>
-                      ) : (
-                        <Label variant="soft" color="default" sx={{ flexShrink: 0 }}>
-                          {sessionClosed ? 'Đã đóng' : 'Hết hạn hủy'}
-                        </Label>
-                      )}
-                    </Box>
-                    <Stack spacing={0.25} sx={{ color: 'text.secondary', typography: 'body2' }}>
-                      <span>📋 {r.session.title}</span>
-                      <span>
-                        📅 {formatDate(r.session.date)} · {formatTime(r.session.startTime)}
-                      </span>
-                      <span>
-                        🏸 Sân {r.courtName} · 📍 {r.session.location}
-                      </span>
-                    </Stack>
-                  </Card>
-                );
-              })}
+                          <Box>
+                            <Typography variant="subtitle1">{r.playerName}</Typography>
+                            {r.isProxy && (
+                              <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+                                Đăng ký hộ
+                              </Typography>
+                            )}
+                          </Box>
+                          {canCancel && !sessionClosed ? (
+                            <Link
+                              component={RouterLink}
+                              href={paths.cancel(r.cancelToken)}
+                              variant="caption"
+                              sx={{ color: 'error.main', flexShrink: 0 }}
+                            >
+                              Hủy đăng ký
+                            </Link>
+                          ) : (
+                            <Label variant="soft" color="default" sx={{ flexShrink: 0 }}>
+                              {sessionClosed ? 'Đã đóng' : 'Hết hạn hủy'}
+                            </Label>
+                          )}
+                        </Box>
+                        <Stack
+                          spacing={0.25}
+                          sx={{ color: 'text.secondary', typography: 'body2' }}
+                        >
+                          <span>📋 {r.session.title}</span>
+                          <span>
+                            📅 {formatDate(r.session.date)} · {formatTime(r.session.startTime)}
+                          </span>
+                          <span>
+                            🏸 Sân {r.courtName} · 📍 {r.session.location}
+                          </span>
+                        </Stack>
+                      </Card>
+                    );
+                  })}
+                </Stack>
+              )}
             </Stack>
           ))}
       </Stack>

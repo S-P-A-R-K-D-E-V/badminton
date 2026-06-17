@@ -4,7 +4,7 @@ import { CancelView } from 'src/sections/cancel/view';
 
 // ----------------------------------------------------------------------
 
-export const metadata = { title: 'Hủy đăng ký | SPARK Badminton' };
+export const metadata = { title: 'Hủy đăng ký | Quang Tâm Đức Badminton' };
 
 export default function CancelPage({ params }: { params: { token: string } }) {
   return (

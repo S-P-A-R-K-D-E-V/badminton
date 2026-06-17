@@ -23,8 +23,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'SPARK Badminton',
-  description: 'Đăng ký lịch chơi cầu lông SPARK',
+  title: 'Quang Tâm Đức Badminton',
+  description: 'Đăng ký lịch chơi cầu lông Quang Tâm Đức',
   icons: {
     icon: [
       { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },

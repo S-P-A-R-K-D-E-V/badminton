@@ -167,7 +167,7 @@ export async function POST(req: Request) {
 
     await bot.api.sendMessage(
       chatId,
-      `🏸 <b>SPARK Badminton Bot</b>\n\nGui so dien thoai de lien ket tai khoan va nhan thong bao ca nhan.`,
+      `🏸 <b>Quang Tâm Đức Badminton Bot</b>\n\nGui so dien thoai de lien ket tai khoan va nhan thong bao ca nhan.`,
       { parse_mode: 'HTML' }
     )
   } catch (err) {

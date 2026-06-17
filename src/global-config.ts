@@ -12,7 +12,7 @@ export type ConfigValue = {
 // ----------------------------------------------------------------------
 
 export const CONFIG: ConfigValue = {
-  appName: 'SPARK Badminton',
+  appName: 'Quang Tâm Đức Badminton',
   appVersion: packageJson.version,
   assetsDir: process.env.NEXT_PUBLIC_ASSETS_DIR ?? '',
   isStaticExport: false,

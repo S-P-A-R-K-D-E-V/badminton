@@ -6,7 +6,7 @@ import { AdminCalendarView } from 'src/sections/admin/calendar/view';
 
 export const revalidate = 0;
 
-export const metadata = { title: 'Lịch buổi chơi | SPARK Badminton' };
+export const metadata = { title: 'Lịch buổi chơi | Quang Tâm Đức Badminton' };
 
 const STATUS_COLOR: Record<string, string> = {
   OPEN: '#22C55E',

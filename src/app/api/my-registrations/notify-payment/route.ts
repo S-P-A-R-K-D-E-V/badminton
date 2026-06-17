@@ -7,12 +7,18 @@ const ACCOUNT_NO = '2510199966668'
 const ACCOUNT_NAME = 'VŨ XUÂN BÌNH'
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID ?? ''
 
-function buildQrUrl(totalAmount: number, name: string, sessionDate: Date | string): string {
+function buildQrUrl(
+  totalAmount: number,
+  name: string,
+  players: string[],
+  sessionDate: Date | string
+): string {
   const d = new Date(sessionDate)
   const day = String(d.getUTCDate()).padStart(2, '0')
   const month = String(d.getUTCMonth() + 1).padStart(2, '0')
   const year = d.getUTCFullYear()
-  const addInfo = encodeURIComponent(`Cầu lông - ${name} ${day}${month}${year}`)
+  const who = players.length > 0 ? ` (${players.join(', ')})` : ''
+  const addInfo = encodeURIComponent(`Cầu lông - ${name}${who} ${day}${month}${year}`)
   return `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.png?amount=${totalAmount}&addInfo=${addInfo}&accountName=${encodeURIComponent(ACCOUNT_NAME)}`
 }
 
@@ -114,7 +120,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Không thể tính được chi phí' }, { status: 400 })
   }
 
-  const qrUrl = buildQrUrl(totalAmount, name, earliestDate)
+  const allPlayers = registrations.map((r) => r.playerName)
+  const qrUrl = buildQrUrl(totalAmount, name, allPlayers, earliestDate)
 
   // Create payment request record
   const payReq = await prisma.paymentRequest.create({

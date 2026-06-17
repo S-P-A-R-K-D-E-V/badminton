@@ -20,7 +20,7 @@ import { Iconify } from 'src/components/iconify';
 
 const BANK_ID = 'MB'
 const ACCOUNT_NO = '2510199966668'
-const ACCOUNT_NAME = 'SPARK Badminton'
+const ACCOUNT_NAME = 'VŨ XUÂN BÌNH'
 
 function buildAddInfo(name: string, sessionDate: string): string {
   const d = new Date(sessionDate)

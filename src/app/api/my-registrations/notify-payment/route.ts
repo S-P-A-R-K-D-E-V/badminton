@@ -4,7 +4,7 @@ import { getBot } from '@/lib/bot'
 
 const BANK_ID = 'MB'
 const ACCOUNT_NO = '2510199966668'
-const ACCOUNT_NAME = 'SPARK Badminton'
+const ACCOUNT_NAME = 'VŨ XUÂN BÌNH'
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID ?? ''
 
 function buildQrUrl(totalAmount: number, name: string, sessionDate: Date | string): string {

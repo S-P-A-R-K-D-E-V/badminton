@@ -22,16 +22,22 @@ const BANK_ID = 'MB'
 const ACCOUNT_NO = '2510199966668'
 const ACCOUNT_NAME = 'VŨ XUÂN BÌNH'
 
-function buildAddInfo(name: string, sessionDate: string): string {
+function buildAddInfo(name: string, players: string[], sessionDate: string): string {
   const d = new Date(sessionDate)
   const day = String(d.getUTCDate()).padStart(2, '0')
   const month = String(d.getUTCMonth() + 1).padStart(2, '0')
   const year = d.getUTCFullYear()
-  return `Cầu lông - ${name} ${day}${month}${year}`
+  const who = players.length > 0 ? ` (${players.join(', ')})` : ''
+  return `Cầu lông - ${name}${who} ${day}${month}${year}`
 }
 
-function buildQrUrl(totalAmount: number, name: string, sessionDate: string): string {
-  const addInfo = encodeURIComponent(buildAddInfo(name, sessionDate))
+function buildQrUrl(
+  totalAmount: number,
+  name: string,
+  players: string[],
+  sessionDate: string
+): string {
+  const addInfo = encodeURIComponent(buildAddInfo(name, players, sessionDate))
   return (
     `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.png` +
     `?amount=${totalAmount}&addInfo=${addInfo}&accountName=${encodeURIComponent(ACCOUNT_NAME)}`
@@ -69,7 +75,9 @@ export function PaymentDialog({ open, onClose, selectedRegs, name, phone, onSucc
 
   const earliestDate = selectedRegs.reduce((min, r) => (r.session.date < min ? r.session.date : min), selectedRegs[0]?.session.date ?? '');
 
-  const qrUrl = selectedRegs.length > 0 ? buildQrUrl(totalAmount, name, earliestDate) : '';
+  const playerNames = selectedRegs.map((r) => r.playerName);
+
+  const qrUrl = selectedRegs.length > 0 ? buildQrUrl(totalAmount, name, playerNames, earliestDate) : '';
 
   const handleSend = async () => {
     setStep('sending');
@@ -156,7 +164,7 @@ export function PaymentDialog({ open, onClose, selectedRegs, name, phone, onSucc
                     value: `${totalAmount.toLocaleString('vi-VN')}đ`,
                     color: 'primary.main',
                   },
-                  { label: 'Nội dung', value: buildAddInfo(name, earliestDate) },
+                  { label: 'Nội dung', value: buildAddInfo(name, playerNames, earliestDate) },
                 ].map((row) => (
                   <Box key={row.label} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
                     <Typography variant="caption" sx={{ color: 'text.secondary', flexShrink: 0 }}>

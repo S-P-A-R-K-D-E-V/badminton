@@ -93,7 +93,7 @@ export function MyRegistrationsView() {
   const [error, setError] = useState<string | null>(null);
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [selectedSessions, setSelectedSessions] = useState<Set<string>>(new Set());
+  const [selectedRegIds, setSelectedRegIds] = useState<Set<string>>(new Set());
   const [paymentOpen, setPaymentOpen] = useState(false);
 
   async function handleSearch(e: React.FormEvent) {
@@ -102,7 +102,7 @@ export function MyRegistrationsView() {
     setError(null);
     setResults(null);
     setExpanded(new Set());
-    setSelectedSessions(new Set());
+    setSelectedRegIds(new Set());
     try {
       const res = await fetch(
         `/api/my-registrations?name=${encodeURIComponent(name)}&phone=${encodeURIComponent(phone)}`
@@ -128,21 +128,36 @@ export function MyRegistrationsView() {
     });
   }, []);
 
-  const toggleSelectSession = useCallback((sid: string) => {
-    setSelectedSessions((prev) => {
+  // Toggle a single registration's selection
+  const toggleSelectReg = useCallback((rid: string) => {
+    setSelectedRegIds((prev) => {
       const next = new Set(prev);
-      if (next.has(sid)) next.delete(sid);
-      else next.add(sid);
+      if (next.has(rid)) next.delete(rid);
+      else next.add(rid);
       return next;
     });
   }, []);
 
-  const selectedGroups = groups.filter((g) => selectedSessions.has(g.sessionId));
-  const selectedUnpaidRegs = selectedGroups.flatMap((g) => g.unpaidRegs);
-  const totalSelected = selectedGroups.reduce(
-    (sum, g) => sum + g.unpaidRegs.length * g.costPerPerson,
-    0
+  // Toggle the whole session: select all unpaid regs, or clear them if all already selected
+  const toggleSelectSession = useCallback((unpaidRegs: RegResult[]) => {
+    setSelectedRegIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = unpaidRegs.every((r) => next.has(r.id));
+      if (allSelected) unpaidRegs.forEach((r) => next.delete(r.id));
+      else unpaidRegs.forEach((r) => next.add(r.id));
+      return next;
+    });
+  }, []);
+
+  const selectedRegs = useMemo(
+    () => groups.flatMap((g) => g.unpaidRegs).filter((r) => selectedRegIds.has(r.id)),
+    [groups, selectedRegIds]
   );
+  const selectedSessionCount = useMemo(
+    () => new Set(selectedRegs.map((r) => r.sessionId)).size,
+    [selectedRegs]
+  );
+  const totalSelected = selectedRegs.reduce((sum, r) => sum + r.costPerPerson, 0);
 
   return (
     <Container maxWidth="sm" sx={{ py: 4 }}>
@@ -194,21 +209,25 @@ export function MyRegistrationsView() {
           groups.length === 0 ? (
             <EmptyContent title="Không tìm thấy đăng ký nào" sx={{ py: 6 }} />
           ) : (
-            <Stack spacing={1.5} sx={{ pb: selectedSessions.size > 0 ? 10 : 0 }}>
+            <Stack spacing={1.5} sx={{ pb: selectedRegIds.size > 0 ? 10 : 0 }}>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                 {groups.length} buổi · {results.length} đăng ký
               </Typography>
 
               {groups.map((group) => {
                 const isExpanded = expanded.has(group.sessionId);
-                const isSelected = selectedSessions.has(group.sessionId);
                 const canSelect = group.hasCost && group.unpaidRegs.length > 0;
+                const selectedCount = group.unpaidRegs.filter((r) =>
+                  selectedRegIds.has(r.id)
+                ).length;
+                const allSelected = selectedCount > 0 && selectedCount === group.unpaidRegs.length;
+                const someSelected = selectedCount > 0 && !allSelected;
 
                 return (
                   <Card
                     key={group.sessionId}
                     sx={{
-                      outline: isSelected ? '2px solid' : 'none',
+                      outline: selectedCount > 0 ? '2px solid' : 'none',
                       outlineColor: 'primary.main',
                       transition: 'outline 0.15s',
                     }}
@@ -229,8 +248,9 @@ export function MyRegistrationsView() {
                         {canSelect ? (
                           <Checkbox
                             size="small"
-                            checked={isSelected}
-                            onChange={() => toggleSelectSession(group.sessionId)}
+                            checked={allSelected}
+                            indeterminate={someSelected}
+                            onChange={() => toggleSelectSession(group.unpaidRegs)}
                             onClick={(e) => e.stopPropagation()}
                             sx={{ mt: 0.25, ml: -0.75, p: 0.75, flexShrink: 0 }}
                           />
@@ -346,6 +366,8 @@ export function MyRegistrationsView() {
                             );
                             const sessionClosed = r.session.status !== 'OPEN';
 
+                            const canPayThis = group.hasCost && !r.isPaid;
+
                             return (
                               <Box
                                 key={r.id}
@@ -356,7 +378,18 @@ export function MyRegistrationsView() {
                                   gap: 1,
                                 }}
                               >
-                                <Box sx={{ minWidth: 0 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+                                  {canPayThis ? (
+                                    <Checkbox
+                                      size="small"
+                                      checked={selectedRegIds.has(r.id)}
+                                      onChange={() => toggleSelectReg(r.id)}
+                                      sx={{ ml: -0.75, p: 0.5, flexShrink: 0 }}
+                                    />
+                                  ) : (
+                                    <Box sx={{ width: 24, flexShrink: 0 }} />
+                                  )}
+                                  <Box sx={{ minWidth: 0 }}>
                                   <Typography variant="body2" sx={{ fontWeight: 500 }}>
                                     {r.playerName}
                                     {r.isProxy && (
@@ -375,6 +408,7 @@ export function MyRegistrationsView() {
                                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                                     Sân {r.courtName}
                                   </Typography>
+                                  </Box>
                                 </Box>
 
                                 <Box
@@ -429,7 +463,7 @@ export function MyRegistrationsView() {
       </Stack>
 
       {/* ── Sticky payment bar ── */}
-      {selectedSessions.size > 0 && (
+      {selectedRegIds.size > 0 && (
         <Paper
           elevation={8}
           sx={{
@@ -449,14 +483,14 @@ export function MyRegistrationsView() {
         >
           <Box sx={{ minWidth: 0 }}>
             <Typography variant="subtitle2">
-              {selectedSessions.size} buổi · {selectedUnpaidRegs.length} đăng ký
+              {selectedSessionCount} buổi · {selectedRegs.length} đăng ký
             </Typography>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               Tổng: {totalSelected.toLocaleString('vi-VN')}đ
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
-            <Button size="small" color="inherit" onClick={() => setSelectedSessions(new Set())}>
+            <Button size="small" color="inherit" onClick={() => setSelectedRegIds(new Set())}>
               Bỏ chọn
             </Button>
             <Button
@@ -475,10 +509,10 @@ export function MyRegistrationsView() {
       <PaymentDialog
         open={paymentOpen}
         onClose={() => setPaymentOpen(false)}
-        selectedRegs={selectedUnpaidRegs}
+        selectedRegs={selectedRegs}
         name={name}
         phone={phone}
-        onSuccess={() => setSelectedSessions(new Set())}
+        onSuccess={() => setSelectedRegIds(new Set())}
       />
     </Container>
   );

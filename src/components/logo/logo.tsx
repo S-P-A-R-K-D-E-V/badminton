@@ -22,7 +22,7 @@ export const Logo = forwardRef<HTMLAnchorElement, LogoProps>((props, ref) => {
 
   const singleLogo = (
     <img
-      alt="SPARK Badminton"
+      alt="Quang Tâm Đức Badminton"
       src="/logo/logo-single.png"
       width="100%"
       height="100%"
@@ -32,7 +32,7 @@ export const Logo = forwardRef<HTMLAnchorElement, LogoProps>((props, ref) => {
 
   const fullLogo = (
     <img
-      alt="SPARK Badminton"
+      alt="Quang Tâm Đức Badminton"
       src="/logo/logo-full.png"
       width="100%"
       height="100%"

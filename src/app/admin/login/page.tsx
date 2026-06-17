@@ -4,7 +4,7 @@ import { AdminPinView } from 'src/sections/auth/admin-pin-view';
 
 // ----------------------------------------------------------------------
 
-export const metadata = { title: 'Đăng nhập Admin | SPARK Badminton' };
+export const metadata = { title: 'Đăng nhập Admin | Quang Tâm Đức Badminton' };
 
 export default function AdminLoginPage() {
   return (

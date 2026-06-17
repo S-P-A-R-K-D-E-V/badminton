@@ -6,7 +6,7 @@ import { SessionListView } from 'src/sections/admin/sessions/view';
 
 export const revalidate = 0;
 
-export const metadata = { title: 'Quản lý buổi chơi | SPARK Badminton' };
+export const metadata = { title: 'Quản lý buổi chơi | Quang Tâm Đức Badminton' };
 
 async function getSessions() {
   return prisma.session.findMany({

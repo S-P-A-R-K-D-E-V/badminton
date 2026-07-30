@@ -37,17 +37,17 @@ jobs:
       - name: Update GitOps image tag
         uses: actions/checkout@v4
         with:
-          repository: S-P-A-R-K-D-E-V/spark-infra
+          repository: S-P-A-R-K-D-E-V/badminton-gitops
           token: ${{ secrets.GITOPS_TOKEN }}
           path: gitops
 
       - name: Patch deployment image tag
         run: |
           sed -i "s|satthuno99/badminton-app:.*|satthuno99/badminton-app:${{ github.sha }}|g" \
-            gitops/k8s/apps/badminton/deployment.yaml
+            gitops/k8s/deployment.yaml
           cd gitops
           git config user.email "ci@spark.dev"
           git config user.name "CI Bot"
-          git add k8s/apps/badminton/deployment.yaml
-          git commit -m "chore: update badminton image to ${{ github.sha }}" || exit 0
+          git add k8s/deployment.yaml
+          git commit -m "deploy: badminton → ${GITHUB_SHA::8}" || exit 0
           git push

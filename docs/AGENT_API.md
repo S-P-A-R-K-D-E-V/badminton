@@ -1,0 +1,164 @@
+# Agent API — Kết nối cho AI Agent
+
+API dành riêng cho AI agent / automation thao tác toàn quyền với lịch chơi
+(session), sân (court), người chơi (registration) và chi phí (cost) — **kể cả
+lịch đã diễn ra trong quá khứ**. Đây là API riêng biệt với API admin dùng
+cookie (`/api/admin/...`), xác thực bằng API key tĩnh nên phù hợp gọi từ
+server-to-server/agent mà không cần đăng nhập trình duyệt.
+
+## Xác thực
+
+Mọi request gửi kèm header:
+
+```
+x-agent-key: <AGENT_API_KEY>
+```
+
+`AGENT_API_KEY` được cấu hình qua biến môi trường (xem `.env.example` và
+`k8s/secret.yaml`). Thiếu hoặc sai key → `401 Unauthorized`.
+
+**Base URL:** `https://<domain-cua-ban>` (xem `NEXT_PUBLIC_APP_URL` / ingress
+host trong `k8s/deployment.yaml`).
+
+## Tổng quan endpoint
+
+| Method | Path | Chức năng |
+|---|---|---|
+| GET | `/api/agent/sessions` | Liệt kê toàn bộ lịch (cả cũ/mới), filter theo `from`, `to`, `status` |
+| POST | `/api/agent/sessions` | Tạo lịch mới (ngày bất kỳ, kể cả ngày trong quá khứ) |
+| GET | `/api/agent/sessions/:id` | Chi tiết 1 lịch: sân, toàn bộ đăng ký (mọi trạng thái), chi phí |
+| PUT | `/api/agent/sessions/:id` | Sửa thông tin lịch hoặc chỉ đổi `status` |
+| DELETE | `/api/agent/sessions/:id` | Xoá lịch |
+| POST | `/api/agent/sessions/:id/courts` | Thêm sân vào 1 lịch |
+| PUT | `/api/agent/courts/:id` | Sửa sân (tên/số slot/ngưỡng cảnh báo) |
+| DELETE | `/api/agent/courts/:id` | Xoá sân |
+| POST | `/api/agent/sessions/:id/players` | Thêm người chơi trực tiếp vào 1 sân |
+| PUT | `/api/agent/registrations/:id` | Sửa người chơi (tên/hạng/trạng thái/đã thanh toán) |
+| DELETE | `/api/agent/registrations/:id` | Huỷ đăng ký (thêm `?hard=true` để xoá hẳn) |
+| GET | `/api/agent/sessions/:id/cost` | Xem chi phí buổi chơi |
+| PUT | `/api/agent/sessions/:id/cost` | Cập nhật (upsert) chi phí buổi chơi |
+
+Tất cả body/response là JSON. Lỗi validate trả `400` kèm chi tiết field lỗi
+(`{ error: { fieldErrors, formErrors } }`), lỗi không tìm thấy trả `404`.
+
+---
+
+## 1. Liệt kê lịch
+
+```bash
+curl -H "x-agent-key: $AGENT_API_KEY" \
+  "https://domain/api/agent/sessions?from=2026-01-01&to=2026-12-31"
+```
+
+Bỏ `from`/`to`/`status` để lấy tất cả (kể cả lịch cũ). Kết quả gồm `courts[]`,
+mỗi court có `registrations[]` (mọi trạng thái: CONFIRMED/WAITLIST/CANCELLED)
+và `cost`.
+
+## 2. Tạo lịch mới (kể cả gán ngày trong quá khứ)
+
+```bash
+curl -X POST -H "x-agent-key: $AGENT_API_KEY" -H "Content-Type: application/json" \
+  https://domain/api/agent/sessions \
+  -d '{
+    "title": "Buổi tối thứ 3",
+    "date": "2026-08-04",
+    "startTime": "19:00",
+    "endTime": "21:00",
+    "location": "Nhà thi đấu Quận 1",
+    "isRecurring": false,
+    "status": "CLOSED",
+    "courts": [
+      { "name": "Sân 1", "maxSlots": 10, "warnAt": 8 }
+    ]
+  }'
+```
+
+`courts` là tuỳ chọn — có thể thêm sân sau bằng endpoint riêng. `status` tuỳ
+chọn (mặc định `OPEN`), nhận `OPEN`/`CLOSED`/`CANCELLED` — hữu ích khi tạo bù
+lịch cũ đã kết thúc.
+
+## 3. Sửa / đổi trạng thái lịch (kể cả lịch cũ)
+
+```bash
+# Sửa toàn bộ thông tin
+curl -X PUT -H "x-agent-key: $AGENT_API_KEY" -H "Content-Type: application/json" \
+  https://domain/api/agent/sessions/SESSION_ID \
+  -d '{"title":"...","date":"2026-08-04","startTime":"19:00","endTime":"21:00","location":"...","isRecurring":false}'
+
+# Chỉ đổi trạng thái
+curl -X PUT -H "x-agent-key: $AGENT_API_KEY" -H "Content-Type: application/json" \
+  https://domain/api/agent/sessions/SESSION_ID -d '{"status":"CANCELLED"}'
+```
+
+## 4. Thêm sân vào lịch
+
+```bash
+curl -X POST -H "x-agent-key: $AGENT_API_KEY" -H "Content-Type: application/json" \
+  https://domain/api/agent/sessions/SESSION_ID/courts \
+  -d '{"name":"Sân 2","maxSlots":10,"warnAt":8}'
+```
+
+## 5. Thêm người chơi vào lịch (kể cả lịch cũ/đã đóng)
+
+```bash
+curl -X POST -H "x-agent-key: $AGENT_API_KEY" -H "Content-Type: application/json" \
+  https://domain/api/agent/sessions/SESSION_ID/players \
+  -d '{
+    "courtId": "COURT_ID",
+    "registrantName": "Nguyễn Văn A",
+    "registrantPhone": "0912345678",
+    "players": [
+      { "playerName": "Nguyễn Văn A", "playerGender": "MALE", "playerRank": "TB" },
+      { "playerName": "Trần Thị B", "playerGender": "FEMALE", "playerRank": "Y+" }
+    ],
+    "status": "CONFIRMED"
+  }'
+```
+
+Endpoint này **không** kiểm tra lịch có đang `OPEN` hay còn slot trống —
+agent chủ động chỉ định `status` (`CONFIRMED` mặc định, hoặc `WAITLIST`), phù
+hợp để bổ sung người cho lịch cũ đã kết thúc.
+
+## 6. Sửa / huỷ người chơi
+
+```bash
+# Sửa
+curl -X PUT -H "x-agent-key: $AGENT_API_KEY" -H "Content-Type: application/json" \
+  https://domain/api/agent/registrations/REG_ID \
+  -d '{"playerRank":"TB+","isPaid":true}'
+
+# Huỷ (soft — giữ lịch sử)
+curl -X DELETE -H "x-agent-key: $AGENT_API_KEY" \
+  https://domain/api/agent/registrations/REG_ID
+
+# Xoá hẳn khỏi DB
+curl -X DELETE -H "x-agent-key: $AGENT_API_KEY" \
+  "https://domain/api/agent/registrations/REG_ID?hard=true"
+```
+
+## 7. Chi phí buổi chơi
+
+```bash
+curl -X PUT -H "x-agent-key: $AGENT_API_KEY" -H "Content-Type: application/json" \
+  https://domain/api/agent/sessions/SESSION_ID/cost \
+  -d '{"courtFee":300000,"shuttlecockCost":150000,"supplyCost":50000,"otherCost":0,"note":"..."}'
+```
+
+---
+
+## Cấu hình
+
+1. Thêm `AGENT_API_KEY` (chuỗi ngẫu nhiên đủ mạnh) vào secret:
+   - Local: `.env` (xem `.env.example`)
+   - K8s: `k8s/secret.yaml` → áp dụng lại `kubectl apply -f k8s/secret.yaml`
+     rồi restart deployment (`kubectl rollout restart deployment/badminton-app`)
+     để pod nhận biến môi trường mới.
+2. Đưa key này cho agent lưu như một credential riêng, **không commit vào
+   git**, không log ra ngoài.
+
+## Ghi chú an toàn
+
+- Toàn bộ endpoint `/api/agent/*` đều có quyền tương đương admin (tạo/sửa/xoá
+  không giới hạn), kể cả trên lịch đã qua — chỉ chia sẻ `AGENT_API_KEY` cho
+  agent/tool tin cậy.
+- Muốn thu hồi quyền: đổi giá trị `AGENT_API_KEY` và deploy lại.

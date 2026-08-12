@@ -122,10 +122,10 @@ hợp để bổ sung người cho lịch cũ đã kết thúc.
 ## 6. Sửa / huỷ người chơi
 
 ```bash
-# Sửa
+# Sửa (playerName/playerGender/playerRank/status/isPaid/registrantName/registrantPhone — mọi field optional)
 curl -X PUT -H "x-agent-key: $AGENT_API_KEY" -H "Content-Type: application/json" \
   https://domain/api/agent/registrations/REG_ID \
-  -d '{"playerRank":"TB+","isPaid":true}'
+  -d '{"playerRank":"TB+","isPaid":true,"registrantName":"Nguyễn Văn A"}'
 
 # Huỷ (soft — giữ lịch sử)
 curl -X DELETE -H "x-agent-key: $AGENT_API_KEY" \

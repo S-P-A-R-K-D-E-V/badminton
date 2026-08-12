@@ -50,6 +50,11 @@ export const AgentUpdateRegistrationSchema = z.object({
   playerRank: z.enum(RANK_OPTIONS as [string, ...string[]]).optional(),
   status: z.enum(['CONFIRMED', 'CANCELLED', 'WAITLIST']).optional(),
   isPaid: z.boolean().optional(),
+  registrantName: z.string().min(2).max(50).optional(),
+  registrantPhone: z
+    .string()
+    .regex(/^(0|\+84)[0-9]{9}$/, 'SĐT không hợp lệ')
+    .optional(),
 })
 
 export type RegisterInput = z.infer<typeof RegisterSchema>

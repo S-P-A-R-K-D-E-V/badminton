@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db'
 import { AgentUpdateRegistrationSchema } from '@/lib/validations'
 import { isAgentAuthorized, agentUnauthorized } from '@/lib/agentAuth'
 
-// PUT /api/agent/registrations/:id — sửa tên/hạng/trạng thái/đã thanh toán
+// PUT /api/agent/registrations/:id — sửa tên người chơi/người đăng ký/hạng/trạng thái/đã thanh toán
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   if (!isAgentAuthorized(req)) return agentUnauthorized()
 

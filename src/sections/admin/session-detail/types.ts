@@ -33,6 +33,7 @@ export type AdminSessionCost = {
 export type AdminSession = {
   id: string;
   status: string;
+  date: string;
   courts: AdminCourt[];
   cost: AdminSessionCost;
 };

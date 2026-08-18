@@ -28,9 +28,17 @@ import type { AdminCourt, AdminRegistration } from './types';
 
 type Props = {
   court: AdminCourt;
+  canSelectForQr?: boolean;
+  selectedRegIds?: Set<string>;
+  onToggleSelect?: (regId: string) => void;
 };
 
-export function CourtManageCard({ court }: Props) {
+export function CourtManageCard({
+  court,
+  canSelectForQr = false,
+  selectedRegIds,
+  onToggleSelect,
+}: Props) {
   const router = useRouter();
 
   const confirmDeleteCourt = useBoolean();
@@ -79,6 +87,17 @@ export function CourtManageCard({ court }: Props) {
 
   const renderRow = (r: AdminRegistration, index: number, isWaitlist: boolean) => (
     <TableRow key={r.id} hover sx={isWaitlist ? { bgcolor: 'action.hover' } : undefined}>
+      {canSelectForQr && (
+        <TableCell padding="checkbox">
+          {!isWaitlist && !r.isPaid && (
+            <Checkbox
+              checked={selectedRegIds?.has(r.id) ?? false}
+              onChange={() => onToggleSelect?.(r.id)}
+              inputProps={{ 'aria-label': `Chọn tạo QR: ${r.playerName}` }}
+            />
+          )}
+        </TableCell>
+      )}
       <TableCell sx={{ color: 'text.disabled', width: 40 }}>{index + 1}</TableCell>
       <TableCell>
         <Typography variant="subtitle2">{r.playerName}</Typography>
@@ -144,6 +163,7 @@ export function CourtManageCard({ court }: Props) {
           <Table size="small" sx={{ minWidth: 640 }}>
             <TableHead>
               <TableRow>
+                {canSelectForQr && <TableCell padding="checkbox" />}
                 <TableCell>#</TableCell>
                 <TableCell>Tên</TableCell>
                 <TableCell>Rank</TableCell>
@@ -158,7 +178,7 @@ export function CourtManageCard({ court }: Props) {
 
               {waitlist.length > 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} sx={{ py: 1, bgcolor: 'action.hover' }}>
+                  <TableCell colSpan={canSelectForQr ? 8 : 7} sx={{ py: 1, bgcolor: 'action.hover' }}>
                     <Label variant="soft" color="warning">
                       Hàng chờ ({waitlist.length})
                     </Label>

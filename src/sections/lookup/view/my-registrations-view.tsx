@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -16,6 +16,7 @@ import TextField from '@mui/material/TextField';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import LoadingButton from '@mui/lab/LoadingButton';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
@@ -92,6 +93,11 @@ export function MyRegistrationsView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadingMoreRef = useRef(false);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedRegIds, setSelectedRegIds] = useState<Set<string>>(new Set());
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -101,6 +107,7 @@ export function MyRegistrationsView() {
     setLoading(true);
     setError(null);
     setResults(null);
+    setHasMore(false);
     setExpanded(new Set());
     setSelectedRegIds(new Set());
     try {
@@ -109,7 +116,10 @@ export function MyRegistrationsView() {
       );
       const data = await res.json();
       if (!res.ok) setError(data.error ?? 'Có lỗi xảy ra');
-      else setResults(data);
+      else {
+        setResults(data.registrations);
+        setHasMore(data.hasMore);
+      }
     } catch {
       setError('Lỗi kết nối, thử lại sau');
     } finally {
@@ -118,6 +128,42 @@ export function MyRegistrationsView() {
   }
 
   const groups = useMemo(() => (results ? groupBySessions(results) : []), [results]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(
+        `/api/my-registrations?name=${encodeURIComponent(name)}&phone=${encodeURIComponent(phone)}&skip=${groups.length}`
+      );
+      const data = await res.json();
+      if (res.ok) {
+        setResults((prev) => [...(prev ?? []), ...data.registrations]);
+        setHasMore(data.hasMore);
+      }
+    } catch {
+      // silently ignore — user can keep scrolling to retry
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [name, phone, groups.length]);
+
+  useEffect(() => {
+    if (!hasMore || loading) return undefined;
+    const node = sentinelRef.current;
+    if (!node) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMore();
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadMore]);
 
   const toggleExpand = useCallback((sid: string) => {
     setExpanded((prev) => {
@@ -457,13 +503,19 @@ export function MyRegistrationsView() {
                   </Card>
                 );
               })}
+
+              {hasMore && (
+                <Box ref={sentinelRef} sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                  {loadingMore && <CircularProgress size={24} />}
+                </Box>
+              )}
             </Stack>
           )
         )}
       </Stack>
 
       {/* ── Sticky payment bar ── */}
-      {selectedRegIds.size > 0 && (
+      {selectedRegIds.size > 0 && !paymentOpen && (
         <Paper
           elevation={8}
           sx={{
@@ -478,7 +530,7 @@ export function MyRegistrationsView() {
             justifyContent: 'space-between',
             gap: 2,
             borderRadius: 2,
-            zIndex: (theme) => theme.zIndex.snackbar,
+            zIndex: (theme) => theme.zIndex.appBar,
           }}
         >
           <Box sx={{ minWidth: 0 }}>

@@ -16,33 +16,7 @@ import Alert from '@mui/material/Alert';
 
 import { Iconify } from 'src/components/iconify';
 
-// ----------------------------------------------------------------------
-
-const BANK_ID = 'MB'
-const ACCOUNT_NO = '2510199966668'
-const ACCOUNT_NAME = 'VŨ XUÂN BÌNH'
-
-function buildAddInfo(name: string, players: string[], sessionDate: string): string {
-  const d = new Date(sessionDate)
-  const day = String(d.getUTCDate()).padStart(2, '0')
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0')
-  const year = d.getUTCFullYear()
-  const who = players.length > 0 ? ` (${players.join(', ')})` : ''
-  return `Cầu lông - ${name}${who} ${day}${month}${year}`
-}
-
-function buildQrUrl(
-  totalAmount: number,
-  name: string,
-  players: string[],
-  sessionDate: string
-): string {
-  const addInfo = encodeURIComponent(buildAddInfo(name, players, sessionDate))
-  return (
-    `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.png` +
-    `?amount=${totalAmount}&addInfo=${addInfo}&accountName=${encodeURIComponent(ACCOUNT_NAME)}`
-  )
-}
+import { buildAddInfo, buildQrUrl, ACCOUNT_NO, BANK_LABEL } from '@/lib/payment-qr';
 
 // ----------------------------------------------------------------------
 
@@ -157,7 +131,7 @@ export function PaymentDialog({ open, onClose, selectedRegs, name, phone, onSucc
             <Box sx={{ bgcolor: 'background.neutral', borderRadius: 1.5, p: 1.75 }}>
               <Stack spacing={0.75}>
                 {[
-                  { label: 'Ngân hàng', value: 'MB Bank' },
+                  { label: 'Ngân hàng', value: BANK_LABEL },
                   { label: 'Số tài khoản', value: ACCOUNT_NO },
                   {
                     label: 'Số tiền',

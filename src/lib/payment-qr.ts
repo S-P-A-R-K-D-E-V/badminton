@@ -5,24 +5,21 @@ const BANK_LABEL = 'MB Bank'
 
 export { ACCOUNT_NO, ACCOUNT_NAME, BANK_LABEL }
 
-export function buildAddInfo(name: string, players: string[], sessionDate: string): string {
-  const d = new Date(sessionDate)
-  const day = String(d.getUTCDate()).padStart(2, '0')
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0')
-  const year = d.getUTCFullYear()
-  const who = players.length > 0 ? ` (${players.join(', ')})` : ''
-  return `Cầu lông - ${name}${who} ${day}${month}${year}`
+// Excludes visually ambiguous characters (0/O, 1/I) so the code is easy to
+// read off a bank statement or type by hand.
+const CODE_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+export function generatePaymentCode(): string {
+  let code = ''
+  for (let i = 0; i < 6; i++) {
+    code += CODE_CHARSET[Math.floor(Math.random() * CODE_CHARSET.length)]
+  }
+  return `BAD-${code}`
 }
 
-export function buildQrUrl(
-  totalAmount: number,
-  name: string,
-  players: string[],
-  sessionDate: string
-): string {
-  const addInfo = encodeURIComponent(buildAddInfo(name, players, sessionDate))
+export function buildQrUrl(totalAmount: number, content: string): string {
   return (
     `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.png` +
-    `?amount=${totalAmount}&addInfo=${addInfo}&accountName=${encodeURIComponent(ACCOUNT_NAME)}`
+    `?amount=${totalAmount}&addInfo=${encodeURIComponent(content)}&accountName=${encodeURIComponent(ACCOUNT_NAME)}`
   )
 }

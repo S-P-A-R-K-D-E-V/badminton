@@ -1,22 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
+import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import Divider from '@mui/material/Divider';
 import Typography from '@mui/material/Typography';
 import DialogTitle from '@mui/material/DialogTitle';
+import LoadingButton from '@mui/lab/LoadingButton';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
-import LoadingButton from '@mui/lab/LoadingButton';
-import Alert from '@mui/material/Alert';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { Iconify } from 'src/components/iconify';
 
-import { buildAddInfo, buildQrUrl, ACCOUNT_NO, BANK_LABEL } from '@/lib/payment-qr';
+import { formatShortDate } from '@/lib/utils';
+import { buildQrUrl, ACCOUNT_NO, BANK_LABEL } from '@/lib/payment-qr';
 
 // ----------------------------------------------------------------------
 
@@ -32,39 +34,61 @@ type RegItem = {
   };
 };
 
+type PaymentRequestInfo = { id: string; code: string; totalAmount: number };
+
 type Props = {
   open: boolean;
   onClose: () => void;
   selectedRegs: RegItem[];
-  name: string;
-  phone: string;
   onSuccess: () => void;
 };
 
-export function PaymentDialog({ open, onClose, selectedRegs, name, phone, onSuccess }: Props) {
-  const [step, setStep] = useState<'qr' | 'sending' | 'done'>('qr');
+export function PaymentDialog({ open, onClose, selectedRegs, onSuccess }: Props) {
+  const [step, setStep] = useState<'creating' | 'qr' | 'sending' | 'done' | 'error'>('creating');
   const [error, setError] = useState<string | null>(null);
+  const [payReq, setPayReq] = useState<PaymentRequestInfo | null>(null);
+  const createdForRef = useRef<string | null>(null);
 
-  const totalAmount = selectedRegs.reduce((sum, r) => sum + r.costPerPerson, 0);
+  useEffect(() => {
+    if (!open) {
+      createdForRef.current = null;
+      return;
+    }
+    const key = selectedRegs.map((r) => r.id).sort().join(',');
+    if (createdForRef.current === key) return;
+    createdForRef.current = key;
 
-  const earliestDate = selectedRegs.reduce((min, r) => (r.session.date < min ? r.session.date : min), selectedRegs[0]?.session.date ?? '');
+    setStep('creating');
+    setError(null);
+    setPayReq(null);
 
-  const playerNames = selectedRegs.map((r) => r.playerName);
-
-  const qrUrl = selectedRegs.length > 0 ? buildQrUrl(totalAmount, name, playerNames, earliestDate) : '';
+    fetch('/api/payment-requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ registrationIds: selectedRegs.map((r) => r.id) }),
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Có lỗi xảy ra, thử lại sau');
+        setPayReq(data);
+        setStep('qr');
+      })
+      .catch((e: Error) => {
+        setError(e.message || 'Lỗi kết nối, thử lại sau');
+        setStep('error');
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const handleSend = async () => {
+    if (!payReq) return;
     setStep('sending');
     setError(null);
     try {
       const res = await fetch('/api/my-registrations/notify-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          registrationIds: selectedRegs.map((r) => r.id),
-          name,
-          phone,
-        }),
+        body: JSON.stringify({ paymentRequestId: payReq.id }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -81,10 +105,11 @@ export function PaymentDialog({ open, onClose, selectedRegs, name, phone, onSucc
   };
 
   const handleClose = () => {
-    setStep('qr');
     setError(null);
     onClose();
   };
+
+  const dates = Array.from(new Set(selectedRegs.map((r) => r.session.date))).sort();
 
   return (
     <Dialog
@@ -99,7 +124,15 @@ export function PaymentDialog({ open, onClose, selectedRegs, name, phone, onSucc
       </DialogTitle>
 
       <DialogContent>
-        {step === 'done' ? (
+        {step === 'creating' && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+            <CircularProgress size={28} />
+          </Box>
+        )}
+
+        {step === 'error' && <Alert severity="error">{error}</Alert>}
+
+        {step === 'done' && (
           /* ── Success state ── */
           <Box sx={{ textAlign: 'center', py: 2 }}>
             <Iconify
@@ -114,14 +147,16 @@ export function PaymentDialog({ open, onClose, selectedRegs, name, phone, onSucc
               Admin sẽ xác nhận sau khi kiểm tra. Tra cứu lại để xem trạng thái cập nhật.
             </Typography>
           </Box>
-        ) : (
+        )}
+
+        {(step === 'qr' || step === 'sending') && payReq && (
           /* ── QR + details state ── */
           <Stack spacing={2} sx={{ pt: 0.5 }}>
             {/* QR code */}
             <Box sx={{ textAlign: 'center' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={qrUrl}
+                src={buildQrUrl(payReq.totalAmount, payReq.code)}
                 alt="VietQR Payment"
                 style={{ width: '100%', maxWidth: 240, borderRadius: 8, display: 'block', margin: '0 auto' }}
               />
@@ -135,10 +170,11 @@ export function PaymentDialog({ open, onClose, selectedRegs, name, phone, onSucc
                   { label: 'Số tài khoản', value: ACCOUNT_NO },
                   {
                     label: 'Số tiền',
-                    value: `${totalAmount.toLocaleString('vi-VN')}đ`,
+                    value: `${payReq.totalAmount.toLocaleString('vi-VN')}đ`,
                     color: 'primary.main',
                   },
-                  { label: 'Nội dung', value: buildAddInfo(name, playerNames, earliestDate) },
+                  { label: 'Nội dung', value: payReq.code },
+                  { label: 'Ngày', value: dates.map(formatShortDate).join(', ') },
                 ].map((row) => (
                   <Box key={row.label} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
                     <Typography variant="caption" sx={{ color: 'text.secondary', flexShrink: 0 }}>
@@ -169,7 +205,7 @@ export function PaymentDialog({ open, onClose, selectedRegs, name, phone, onSucc
                   >
                     <span>
                       {r.playerName}
-                      {r.isProxy ? ' (hộ)' : ''} · Sân {r.courtName}
+                      {r.isProxy ? ' (hộ)' : ''} · {r.courtName}
                     </span>
                     <b>{r.costPerPerson.toLocaleString('vi-VN')}đ</b>
                   </Box>
@@ -192,7 +228,7 @@ export function PaymentDialog({ open, onClose, selectedRegs, name, phone, onSucc
         <Button color="inherit" onClick={handleClose}>
           {step === 'done' ? 'Đóng' : 'Hủy'}
         </Button>
-        {step !== 'done' && (
+        {(step === 'qr' || step === 'sending') && (
           <LoadingButton
             variant="contained"
             loading={step === 'sending'}

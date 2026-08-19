@@ -1,22 +1,32 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { costPerPersonFor } from '@/lib/session-cost'
+
+import type { Prisma } from '@prisma/client'
 
 const PAGE_SIZE = 5
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
-  const name = searchParams.get('name')?.trim()
+  const q = searchParams.get('q')?.trim()
+  const registrant = searchParams.get('registrant')?.trim()
   const phone = searchParams.get('phone')?.trim()
+  const paid = searchParams.get('paid') // 'true' | 'false' | null
   const skip = Math.max(0, Number(searchParams.get('skip')) || 0)
 
-  if (!name || !phone) {
-    return NextResponse.json({ error: 'Thiếu tên hoặc số điện thoại' }, { status: 400 })
+  if (!q && !registrant && !phone) {
+    return NextResponse.json(
+      { error: 'Nhập tên người chơi, người đăng ký hoặc số điện thoại để tìm kiếm' },
+      { status: 400 }
+    )
   }
 
-  const matchFilter = {
-    registrantName: { equals: name, mode: 'insensitive' as const },
-    registrantPhone: phone,
-    status: 'CONFIRMED' as const,
+  const matchFilter: Prisma.RegistrationWhereInput = {
+    status: 'CONFIRMED',
+    ...(q ? { playerName: { contains: q, mode: 'insensitive' } } : {}),
+    ...(registrant ? { registrantName: { contains: registrant, mode: 'insensitive' } } : {}),
+    ...(phone ? { registrantPhone: { contains: phone } } : {}),
+    ...(paid === 'true' ? { isPaid: true } : paid === 'false' ? { isPaid: false } : {}),
   }
 
   // Paginate by distinct session (newest first) so each page returns whole,
@@ -68,28 +78,21 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     registrations: registrations.map((r) => {
-      const cost = r.court.session.cost
-      const totalCost = cost
-        ? cost.courtFee + cost.shuttlecockCost + cost.supplyCost + cost.otherCost
-        : 0
-      const confirmedCount = r.court.session.courts.reduce(
-        (sum, c) => sum + c._count.registrations,
-        0
-      )
-      const costPerPerson =
-        confirmedCount > 0 && totalCost > 0 ? Math.ceil(totalCost / confirmedCount) : 0
+      const costPerPerson = costPerPersonFor(r.court.session)
 
       return {
         id: r.id,
         sessionId: r.court.sessionId,
         playerName: r.playerName,
         isProxy: r.isProxy,
+        registrantName: r.registrantName,
+        registrantPhone: r.registrantPhone,
         cancelToken: r.cancelToken,
         registeredAt: r.registeredAt,
         courtName: r.court.name,
         isPaid: r.isPaid,
         costPerPerson,
-        hasCost: !!cost && totalCost > 0,
+        hasCost: costPerPerson > 0,
         session: {
           title: r.court.session.title,
           date: r.court.session.date,

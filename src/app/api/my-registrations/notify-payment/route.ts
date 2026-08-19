@@ -2,84 +2,36 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getBot } from '@/lib/bot'
 
-const BANK_ID = 'MB'
 const ACCOUNT_NO = '2510199966668'
-const ACCOUNT_NAME = 'VŨ XUÂN BÌNH'
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID ?? ''
-
-function buildQrUrl(
-  totalAmount: number,
-  name: string,
-  players: string[],
-  sessionDate: Date | string
-): string {
-  const d = new Date(sessionDate)
-  const day = String(d.getUTCDate()).padStart(2, '0')
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0')
-  const year = d.getUTCFullYear()
-  const who = players.length > 0 ? ` (${players.join(', ')})` : ''
-  const addInfo = encodeURIComponent(`Cầu lông - ${name}${who} ${day}${month}${year}`)
-  return `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.png?amount=${totalAmount}&addInfo=${addInfo}&accountName=${encodeURIComponent(ACCOUNT_NAME)}`
-}
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null)
-  const { registrationIds, phone, name } = body ?? {}
+  const { paymentRequestId } = body ?? {}
 
-  if (!Array.isArray(registrationIds) || registrationIds.length === 0 || !phone || !name) {
-    return NextResponse.json({ error: 'Thiếu thông tin' }, { status: 400 })
+  if (!paymentRequestId) {
+    return NextResponse.json({ error: 'Thiếu mã yêu cầu thanh toán' }, { status: 400 })
   }
 
-  // Fetch and validate — only CONFIRMED, unpaid, belonging to this phone/name
+  const payReq = await prisma.paymentRequest.findUnique({ where: { id: paymentRequestId } })
+  if (!payReq || payReq.status !== 'PENDING') {
+    return NextResponse.json({ error: 'Yêu cầu thanh toán không hợp lệ' }, { status: 400 })
+  }
+
   const registrations = await prisma.registration.findMany({
-    where: {
-      id: { in: registrationIds },
-      registrantPhone: phone,
-      registrantName: { equals: name, mode: 'insensitive' },
-      status: 'CONFIRMED',
-      isPaid: false,
-    },
+    where: { id: { in: payReq.registrationIds } },
     include: {
-      court: {
-        include: {
-          session: {
-            select: {
-              title: true,
-              date: true,
-              cost: true,
-              courts: {
-                select: {
-                  _count: {
-                    select: {
-                      registrations: { where: { status: 'CONFIRMED' } },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
+      court: { include: { session: { select: { title: true, date: true } } } },
     },
   })
 
-  if (registrations.length !== registrationIds.length) {
+  if (registrations.some((r) => r.status !== 'CONFIRMED' || r.isPaid)) {
     return NextResponse.json(
-      { error: 'Một số đăng ký không hợp lệ hoặc đã được thanh toán' },
+      { error: 'Một số đăng ký đã được thanh toán hoặc hủy, tra cứu lại để cập nhật' },
       { status: 400 }
     )
   }
 
-  // Validate all sessions have cost set
-  const missingCost = registrations.some((r) => {
-    const cost = r.court.session.cost
-    return !cost || cost.courtFee + cost.shuttlecockCost + cost.supplyCost + cost.otherCost === 0
-  })
-  if (missingCost) {
-    return NextResponse.json({ error: 'Có buổi chơi chưa được chốt phí' }, { status: 400 })
-  }
-
-  // Group by session to calculate per-person cost
   const bySession = new Map<string, typeof registrations>()
   for (const r of registrations) {
     const sid = r.court.sessionId
@@ -88,61 +40,25 @@ export async function POST(req: Request) {
   }
 
   const lines: string[] = []
-  let totalAmount = 0
-  let earliestDate: Date | string = registrations[0].court.session.date
-
   for (const regs of Array.from(bySession.values())) {
     const session = regs[0].court.session
-    const cost = session.cost!
-    const totalCost = cost.courtFee + cost.shuttlecockCost + cost.supplyCost + cost.otherCost
-    const confirmedCount = session.courts.reduce((sum, c) => sum + c._count.registrations, 0)
-    const costPerPerson = confirmedCount > 0 ? Math.ceil(totalCost / confirmedCount) : 0
-
     const d = new Date(session.date)
     const dateStr = `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`
-
-    // Track earliest session date for QR addInfo
-    if (new Date(session.date) < new Date(earliestDate)) {
-      earliestDate = session.date
-    }
-
     lines.push(`📋 <b>${session.title}</b> (${dateStr})`)
     for (const r of regs) {
       const proxyNote = r.isProxy ? ' <i>(hộ)</i>' : ''
-      lines.push(
-        `   • ${r.playerName}${proxyNote} — ${costPerPerson.toLocaleString('vi-VN')}đ`
-      )
-      totalAmount += costPerPerson
+      lines.push(`   • ${r.playerName}${proxyNote}`)
     }
   }
 
-  if (totalAmount === 0) {
-    return NextResponse.json({ error: 'Không thể tính được chi phí' }, { status: 400 })
-  }
-
-  const allPlayers = registrations.map((r) => r.playerName)
-  const qrUrl = buildQrUrl(totalAmount, name, allPlayers, earliestDate)
-
-  // Create payment request record
-  const payReq = await prisma.paymentRequest.create({
-    data: {
-      phone,
-      name,
-      registrationIds,
-      totalAmount,
-      status: 'PENDING',
-    },
-  })
-
-  // Send Telegram notification
   const bot = getBot()
   if (bot && CHAT_ID) {
     const text =
       `💰 <b>Thông báo thanh toán</b>\n\n` +
-      `👤 <b>${name}</b> (${phone})\n` +
-      `xin xác nhận đã chuyển khoản:\n\n` +
+      `👤 <b>${payReq.name}</b> (${payReq.phone})\n` +
+      `xin xác nhận đã chuyển khoản (mã: <b>${payReq.code}</b>):\n\n` +
       `${lines.join('\n')}\n\n` +
-      `💵 Tổng: <b>${totalAmount.toLocaleString('vi-VN')}đ</b>\n` +
+      `💵 Tổng: <b>${payReq.totalAmount.toLocaleString('vi-VN')}đ</b>\n` +
       `🏦 MB Bank · ${ACCOUNT_NO}`
 
     try {
@@ -167,5 +83,5 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ id: payReq.id, qrUrl })
+  return NextResponse.json({ id: payReq.id })
 }

@@ -14,6 +14,11 @@ export function formatTime(time: Date | string) {
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
+export function formatShortDate(date: Date | string) {
+  const d = new Date(date);
+  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+}
+
 // Rank system: NB, Y, TBY, TB, TBK, K với modifiers +, -, ++, --
 const RANK_ORDER: Record<string, number> = {
   NB: 0, Y: 10, TBY: 20, TB: 30, TBK: 40, K: 50,

@@ -1,21 +1,26 @@
 'use client';
 
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
+import { useDebounce } from 'minimal-shared/hooks';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Link from '@mui/material/Link';
 import Alert from '@mui/material/Alert';
 import Paper from '@mui/material/Paper';
+import Select from '@mui/material/Select';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
+import MenuItem from '@mui/material/MenuItem';
 import Collapse from '@mui/material/Collapse';
 import Checkbox from '@mui/material/Checkbox';
 import TextField from '@mui/material/TextField';
+import InputLabel from '@mui/material/InputLabel';
 import Container from '@mui/material/Container';
+import FormControl from '@mui/material/FormControl';
 import Typography from '@mui/material/Typography';
-import LoadingButton from '@mui/lab/LoadingButton';
+import InputAdornment from '@mui/material/InputAdornment';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { paths } from 'src/routes/paths';
@@ -36,6 +41,8 @@ type RegResult = {
   sessionId: string;
   playerName: string;
   isProxy: boolean;
+  registrantName: string;
+  registrantPhone: string;
   cancelToken: string;
   registeredAt: string;
   courtName: string;
@@ -84,11 +91,35 @@ function groupBySessions(results: RegResult[]): SessionGroup[] {
     .sort((a, b) => new Date(b.session.date).getTime() - new Date(a.session.date).getTime());
 }
 
+function buildParams(opts: {
+  q: string;
+  registrant: string;
+  phone: string;
+  paid: string;
+  skip: number;
+}) {
+  const params = new URLSearchParams();
+  if (opts.q) params.set('q', opts.q);
+  if (opts.registrant) params.set('registrant', opts.registrant);
+  if (opts.phone) params.set('phone', opts.phone);
+  if (opts.paid !== 'all') params.set('paid', opts.paid);
+  if (opts.skip) params.set('skip', String(opts.skip));
+  return params.toString();
+}
+
 // ----------------------------------------------------------------------
 
 export function MyRegistrationsView() {
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [qInput, setQInput] = useState('');
+  const [registrantInput, setRegistrantInput] = useState('');
+  const [phoneInput, setPhoneInput] = useState('');
+  const [paid, setPaid] = useState<'all' | 'true' | 'false'>('all');
+
+  const q = useDebounce(qInput, 400);
+  const registrant = useDebounce(registrantInput, 400);
+  const phone = useDebounce(phoneInput, 400);
+  const hasQuery = !!(q || registrant || phone);
+
   const [results, setResults] = useState<RegResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,30 +133,46 @@ export function MyRegistrationsView() {
   const [selectedRegIds, setSelectedRegIds] = useState<Set<string>>(new Set());
   const [paymentOpen, setPaymentOpen] = useState(false);
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setResults(null);
-    setHasMore(false);
+  useEffect(() => {
     setExpanded(new Set());
     setSelectedRegIds(new Set());
-    try {
-      const res = await fetch(
-        `/api/my-registrations?name=${encodeURIComponent(name)}&phone=${encodeURIComponent(phone)}`
-      );
-      const data = await res.json();
-      if (!res.ok) setError(data.error ?? 'Có lỗi xảy ra');
-      else {
-        setResults(data.registrations);
-        setHasMore(data.hasMore);
-      }
-    } catch {
-      setError('Lỗi kết nối, thử lại sau');
-    } finally {
-      setLoading(false);
+
+    if (!hasQuery) {
+      setResults(null);
+      setHasMore(false);
+      setError(null);
+      return;
     }
-  }
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    fetch(`/api/my-registrations?${buildParams({ q, registrant, phone, paid, skip: 0 })}`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          setError(data.error ?? 'Có lỗi xảy ra');
+          setResults(null);
+          setHasMore(false);
+        } else {
+          setResults(data.registrations);
+          setHasMore(data.hasMore);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError('Lỗi kết nối, thử lại sau');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, registrant, phone, paid]);
 
   const groups = useMemo(() => (results ? groupBySessions(results) : []), [results]);
 
@@ -135,7 +182,7 @@ export function MyRegistrationsView() {
     setLoadingMore(true);
     try {
       const res = await fetch(
-        `/api/my-registrations?name=${encodeURIComponent(name)}&phone=${encodeURIComponent(phone)}&skip=${groups.length}`
+        `/api/my-registrations?${buildParams({ q, registrant, phone, paid, skip: groups.length })}`
       );
       const data = await res.json();
       if (res.ok) {
@@ -148,7 +195,7 @@ export function MyRegistrationsView() {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [name, phone, groups.length]);
+  }, [q, registrant, phone, paid, groups.length]);
 
   useEffect(() => {
     if (!hasMore || loading) return undefined;
@@ -206,313 +253,359 @@ export function MyRegistrationsView() {
   const totalSelected = selectedRegs.reduce((sum, r) => sum + r.costPerPerson, 0);
 
   return (
-    <Container maxWidth="sm" sx={{ py: 4 }}>
-      <Stack spacing={3}>
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" sx={{ mb: 0.5 }}>
+          Tra cứu đăng ký
+        </Typography>
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          Nhập tên người chơi để xem danh sách đăng ký
+        </Typography>
+      </Box>
+
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '280px 1fr' },
+          gap: 3,
+          alignItems: 'start',
+        }}
+      >
+        {/* ── Filters (left nav) ── */}
+        <Card sx={{ p: 2.5, position: { md: 'sticky' }, top: { md: 88 } }}>
+            <Stack spacing={2}>
+              <TextField
+                fullWidth
+                label="Tìm kiếm"
+                placeholder="Tên người chơi"
+                value={qInput}
+                onChange={(e) => setQInput(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Iconify icon="eva:search-fill" width={18} sx={{ color: 'text.disabled' }} />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+
+              <FormControl fullWidth>
+                <InputLabel id="paid-filter-label">Trạng thái thanh toán</InputLabel>
+                <Select
+                  labelId="paid-filter-label"
+                  label="Trạng thái thanh toán"
+                  value={paid}
+                  onChange={(e) => setPaid(e.target.value as 'all' | 'true' | 'false')}
+                >
+                  <MenuItem value="all">Tất cả</MenuItem>
+                  <MenuItem value="false">Chưa trả</MenuItem>
+                  <MenuItem value="true">Đã trả</MenuItem>
+                </Select>
+              </FormControl>
+
+              <TextField
+                fullWidth
+                label="Người đăng ký"
+                placeholder="Nguyễn Văn A"
+                value={registrantInput}
+                onChange={(e) => setRegistrantInput(e.target.value)}
+              />
+
+              <TextField
+                fullWidth
+                label="Số điện thoại đăng ký"
+                placeholder="0901234567"
+                value={phoneInput}
+                onChange={(e) => setPhoneInput(e.target.value)}
+              />
+            </Stack>
+          </Card>
+
+        {/* ── Results ── */}
         <Box>
-          <Typography variant="h4" sx={{ mb: 0.5 }}>
-            Tra cứu đăng ký
-          </Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Nhập đúng tên và số điện thoại để xem danh sách đăng ký
-          </Typography>
-        </Box>
-
-        {/* Search form */}
-        <Card component="form" onSubmit={handleSearch} sx={{ p: 2.5 }}>
-          <Stack spacing={2}>
-            <TextField
-              fullWidth
-              required
-              label="Tên người đăng ký"
-              placeholder="Nguyễn Văn A"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+          {!hasQuery ? (
+            <EmptyContent
+              title="Nhập điều kiện tìm kiếm"
+              description="Nhập tên người chơi, người đăng ký hoặc số điện thoại để xem danh sách đăng ký"
+              sx={{ py: 6 }}
             />
-            <TextField
-              fullWidth
-              required
-              label="Số điện thoại"
-              placeholder="0901234567"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-            <LoadingButton
-              fullWidth
-              type="submit"
-              size="large"
-              variant="contained"
-              loading={loading}
-            >
-              Tra cứu
-            </LoadingButton>
-          </Stack>
-        </Card>
-
-        {error && <Alert severity="error">{error}</Alert>}
-
-        {/* Results */}
-        {results !== null && (
-          groups.length === 0 ? (
-            <EmptyContent title="Không tìm thấy đăng ký nào" sx={{ py: 6 }} />
           ) : (
             <Stack spacing={1.5} sx={{ pb: selectedRegIds.size > 0 ? 10 : 0 }}>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {groups.length} buổi · {results.length} đăng ký
-              </Typography>
+              {loading && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress size={28} />
+                </Box>
+              )}
 
-              {groups.map((group) => {
-                const isExpanded = expanded.has(group.sessionId);
-                const canSelect = group.hasCost && group.unpaidRegs.length > 0;
-                const selectedCount = group.unpaidRegs.filter((r) =>
-                  selectedRegIds.has(r.id)
-                ).length;
-                const allSelected = selectedCount > 0 && selectedCount === group.unpaidRegs.length;
-                const someSelected = selectedCount > 0 && !allSelected;
+              {!loading && error && <Alert severity="error">{error}</Alert>}
 
-                return (
-                  <Card
-                    key={group.sessionId}
-                    sx={{
-                      outline: selectedCount > 0 ? '2px solid' : 'none',
-                      outlineColor: 'primary.main',
-                      transition: 'outline 0.15s',
-                    }}
-                  >
-                    {/* ── Clickable header ── */}
-                    <Box
-                      onClick={() => toggleExpand(group.sessionId)}
-                      sx={{
-                        p: 2.5,
-                        cursor: 'pointer',
-                        userSelect: 'none',
-                        '&:hover': { bgcolor: 'action.hover' },
-                        transition: 'background-color 0.15s',
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
-                        {/* Checkbox — stops click from propagating to header */}
-                        {canSelect ? (
-                          <Checkbox
-                            size="small"
-                            checked={allSelected}
-                            indeterminate={someSelected}
-                            onChange={() => toggleSelectSession(group.unpaidRegs)}
-                            onClick={(e) => e.stopPropagation()}
-                            sx={{ mt: 0.25, ml: -0.75, p: 0.75, flexShrink: 0 }}
-                          />
-                        ) : (
-                          <Box sx={{ width: 34, flexShrink: 0 }} />
-                        )}
+              {!loading && !error && groups.length === 0 && (
+                <EmptyContent title="Không tìm thấy đăng ký nào" sx={{ py: 6 }} />
+              )}
 
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          {/* Title + expand icon */}
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'flex-start',
-                              justifyContent: 'space-between',
-                              gap: 1,
-                            }}
-                          >
-                            <Typography variant="subtitle1" sx={{ lineHeight: 1.4 }}>
-                              {group.session.title}
-                            </Typography>
-                            <Iconify
-                              icon={
-                                isExpanded
-                                  ? 'eva:chevron-up-fill'
-                                  : 'eva:chevron-down-fill'
-                              }
-                              width={20}
-                              sx={{ flexShrink: 0, mt: 0.25, color: 'text.disabled' }}
-                            />
-                          </Box>
+              {!loading && !error && groups.length > 0 && (
+                <>
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    {groups.length} buổi · {results!.length} đăng ký
+                  </Typography>
 
-                          {/* Date + location */}
-                          <Stack
-                            spacing={0.25}
-                            sx={{ mt: 0.5, typography: 'body2', color: 'text.secondary' }}
-                          >
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <Iconify icon="solar:calendar-outline" width={13} />
-                              {formatDate(group.session.date)} · {formatTime(group.session.startTime)}
-                            </Box>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <Iconify icon="mingcute:location-line" width={13} />
-                              {group.session.location}
-                            </Box>
-                          </Stack>
+                  {groups.map((group) => {
+                    const isExpanded = expanded.has(group.sessionId);
+                    const canSelect = group.hasCost && group.unpaidRegs.length > 0;
+                    const selectedCount = group.unpaidRegs.filter((r) =>
+                      selectedRegIds.has(r.id)
+                    ).length;
+                    const allSelected =
+                      selectedCount > 0 && selectedCount === group.unpaidRegs.length;
+                    const someSelected = selectedCount > 0 && !allSelected;
 
-                          {/* Summary: count + cost + status labels */}
-                          <Box
-                            sx={{
-                              mt: 1.25,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 1,
-                              flexWrap: 'wrap',
-                            }}
-                          >
-                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                              👥 {group.registrations.length} người đăng ký
-                            </Typography>
-
-                            {group.hasCost && (
-                              <>
-                                <Typography
-                                  variant="caption"
-                                  sx={{ color: 'text.disabled' }}
-                                >
-                                  ·
-                                </Typography>
-                                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                  💰 {group.costPerPerson.toLocaleString('vi-VN')}đ/người
-                                </Typography>
-                              </>
+                    return (
+                      <Card
+                        key={group.sessionId}
+                        sx={{
+                          outline: selectedCount > 0 ? '2px solid' : 'none',
+                          outlineColor: 'primary.main',
+                          transition: 'outline 0.15s',
+                        }}
+                      >
+                        {/* ── Clickable header ── */}
+                        <Box
+                          onClick={() => toggleExpand(group.sessionId)}
+                          sx={{
+                            p: 2.5,
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            '&:hover': { bgcolor: 'action.hover' },
+                            transition: 'background-color 0.15s',
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+                            {/* Checkbox — stops click from propagating to header */}
+                            {canSelect ? (
+                              <Checkbox
+                                size="small"
+                                checked={allSelected}
+                                indeterminate={someSelected}
+                                onChange={() => toggleSelectSession(group.unpaidRegs)}
+                                onClick={(e) => e.stopPropagation()}
+                                sx={{ mt: 0.25, ml: -0.75, p: 0.75, flexShrink: 0 }}
+                              />
+                            ) : (
+                              <Box sx={{ width: 34, flexShrink: 0 }} />
                             )}
-                          </Box>
 
-                          {/* Payment status badges */}
-                          {group.hasCost &&
-                            (group.paidRegs.length > 0 || group.unpaidRegs.length > 0) && (
-                              <Box sx={{ mt: 0.75, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-                                {group.paidRegs.length > 0 && (
-                                  <Label
-                                    variant="soft"
-                                    color="success"
-                                    sx={{ height: 20, fontSize: 10 }}
-                                  >
-                                    ✓ Đã trả ×{group.paidRegs.length}
-                                  </Label>
-                                )}
-                                {group.unpaidRegs.length > 0 && (
-                                  <Label
-                                    variant="soft"
-                                    color="warning"
-                                    sx={{ height: 20, fontSize: 10 }}
-                                  >
-                                    Chưa trả ×{group.unpaidRegs.length}
-                                  </Label>
-                                )}
-                              </Box>
-                            )}
-                        </Box>
-                      </Box>
-                    </Box>
-
-                    {/* ── Expanded: registration list ── */}
-                    <Collapse in={isExpanded}>
-                      <Divider />
-                      <Box sx={{ px: 2.5, py: 1.75 }}>
-                        <Stack spacing={1.25}>
-                          {group.registrations.map((r) => {
-                            const canCancel = canCancelRegistration(
-                              new Date(r.session.date),
-                              new Date(r.session.startTime)
-                            );
-                            const sessionClosed = r.session.status !== 'OPEN';
-
-                            const canPayThis = group.hasCost && !r.isPaid;
-
-                            return (
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              {/* Title + expand icon */}
                               <Box
-                                key={r.id}
                                 sx={{
                                   display: 'flex',
-                                  alignItems: 'center',
+                                  alignItems: 'flex-start',
                                   justifyContent: 'space-between',
                                   gap: 1,
                                 }}
                               >
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-                                  {canPayThis ? (
-                                    <Checkbox
-                                      size="small"
-                                      checked={selectedRegIds.has(r.id)}
-                                      onChange={() => toggleSelectReg(r.id)}
-                                      sx={{ ml: -0.75, p: 0.5, flexShrink: 0 }}
-                                    />
-                                  ) : (
-                                    <Box sx={{ width: 24, flexShrink: 0 }} />
-                                  )}
-                                  <Box sx={{ minWidth: 0 }}>
-                                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                    {r.playerName}
-                                    {r.isProxy && (
-                                      <Box
-                                        component="span"
-                                        sx={{
-                                          typography: 'caption',
-                                          color: 'text.disabled',
-                                          ml: 0.5,
-                                        }}
-                                      >
-                                        (hộ)
-                                      </Box>
-                                    )}
-                                  </Typography>
-                                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                    Sân {r.courtName}
-                                  </Typography>
-                                  </Box>
-                                </Box>
-
-                                <Box
-                                  sx={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 0.75,
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {group.hasCost && (
-                                    <Label
-                                      variant="soft"
-                                      color={r.isPaid ? 'success' : 'warning'}
-                                      sx={{ height: 20, fontSize: 10 }}
-                                    >
-                                      {r.isPaid ? 'Đã trả' : 'Chưa trả'}
-                                    </Label>
-                                  )}
-                                  {canCancel && !sessionClosed ? (
-                                    <Link
-                                      component={RouterLink}
-                                      href={paths.cancel(r.cancelToken)}
-                                      variant="caption"
-                                      sx={{ color: 'error.main' }}
-                                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                                    >
-                                      Hủy
-                                    </Link>
-                                  ) : (
-                                    <Label
-                                      variant="soft"
-                                      color="default"
-                                      sx={{ height: 20, fontSize: 10 }}
-                                    >
-                                      {sessionClosed ? 'Đã đóng' : 'Hết hạn'}
-                                    </Label>
-                                  )}
-                                </Box>
+                                <Typography variant="subtitle1" sx={{ lineHeight: 1.4 }}>
+                                  {group.session.title}
+                                </Typography>
+                                <Iconify
+                                  icon={
+                                    isExpanded
+                                      ? 'eva:chevron-up-fill'
+                                      : 'eva:chevron-down-fill'
+                                  }
+                                  width={20}
+                                  sx={{ flexShrink: 0, mt: 0.25, color: 'text.disabled' }}
+                                />
                               </Box>
-                            );
-                          })}
-                        </Stack>
-                      </Box>
-                    </Collapse>
-                  </Card>
-                );
-              })}
 
-              {hasMore && (
-                <Box ref={sentinelRef} sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-                  {loadingMore && <CircularProgress size={24} />}
-                </Box>
+                              {/* Date + location */}
+                              <Stack
+                                spacing={0.25}
+                                sx={{ mt: 0.5, typography: 'body2', color: 'text.secondary' }}
+                              >
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  <Iconify icon="solar:calendar-outline" width={13} />
+                                  {formatDate(group.session.date)} · {formatTime(group.session.startTime)}
+                                </Box>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  <Iconify icon="mingcute:location-line" width={13} />
+                                  {group.session.location}
+                                </Box>
+                              </Stack>
+
+                              {/* Summary: count + cost + status labels */}
+                              <Box
+                                sx={{
+                                  mt: 1.25,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 1,
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                  👥 {group.registrations.length} người đăng ký
+                                </Typography>
+
+                                {group.hasCost && (
+                                  <>
+                                    <Typography
+                                      variant="caption"
+                                      sx={{ color: 'text.disabled' }}
+                                    >
+                                      ·
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                      💰 {group.costPerPerson.toLocaleString('vi-VN')}đ/người
+                                    </Typography>
+                                  </>
+                                )}
+                              </Box>
+
+                              {/* Payment status badges */}
+                              {group.hasCost &&
+                                (group.paidRegs.length > 0 || group.unpaidRegs.length > 0) && (
+                                  <Box sx={{ mt: 0.75, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                                    {group.paidRegs.length > 0 && (
+                                      <Label
+                                        variant="soft"
+                                        color="success"
+                                        sx={{ height: 20, fontSize: 10 }}
+                                      >
+                                        ✓ Đã trả ×{group.paidRegs.length}
+                                      </Label>
+                                    )}
+                                    {group.unpaidRegs.length > 0 && (
+                                      <Label
+                                        variant="soft"
+                                        color="warning"
+                                        sx={{ height: 20, fontSize: 10 }}
+                                      >
+                                        Chưa trả ×{group.unpaidRegs.length}
+                                      </Label>
+                                    )}
+                                  </Box>
+                                )}
+                            </Box>
+                          </Box>
+                        </Box>
+
+                        {/* ── Expanded: registration list ── */}
+                        <Collapse in={isExpanded}>
+                          <Divider />
+                          <Box sx={{ px: 2.5, py: 1.75 }}>
+                            <Stack spacing={1.25}>
+                              {group.registrations.map((r) => {
+                                const canCancel = canCancelRegistration(
+                                  new Date(r.session.date),
+                                  new Date(r.session.startTime)
+                                );
+                                const sessionClosed = r.session.status !== 'OPEN';
+
+                                const canPayThis = group.hasCost && !r.isPaid;
+
+                                return (
+                                  <Box
+                                    key={r.id}
+                                    sx={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: 1,
+                                    }}
+                                  >
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+                                      {canPayThis ? (
+                                        <Checkbox
+                                          size="small"
+                                          checked={selectedRegIds.has(r.id)}
+                                          onChange={() => toggleSelectReg(r.id)}
+                                          sx={{ ml: -0.75, p: 0.5, flexShrink: 0 }}
+                                        />
+                                      ) : (
+                                        <Box sx={{ width: 24, flexShrink: 0 }} />
+                                      )}
+                                      <Box sx={{ minWidth: 0 }}>
+                                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                        {r.playerName}
+                                        {r.isProxy && (
+                                          <Box
+                                            component="span"
+                                            sx={{
+                                              typography: 'caption',
+                                              color: 'text.disabled',
+                                              ml: 0.5,
+                                            }}
+                                          >
+                                            (hộ)
+                                          </Box>
+                                        )}
+                                      </Typography>
+                                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                        {r.courtName}
+                                        {r.isProxy && ` · ${r.registrantName}`}
+                                      </Typography>
+                                      </Box>
+                                    </Box>
+
+                                    <Box
+                                      sx={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 0.75,
+                                        flexShrink: 0,
+                                      }}
+                                    >
+                                      {group.hasCost && (
+                                        <Label
+                                          variant="soft"
+                                          color={r.isPaid ? 'success' : 'warning'}
+                                          sx={{ height: 20, fontSize: 10 }}
+                                        >
+                                          {r.isPaid ? 'Đã trả' : 'Chưa trả'}
+                                        </Label>
+                                      )}
+                                      {canCancel && !sessionClosed ? (
+                                        <Link
+                                          component={RouterLink}
+                                          href={paths.cancel(r.cancelToken)}
+                                          variant="caption"
+                                          sx={{ color: 'error.main' }}
+                                          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                                        >
+                                          Hủy
+                                        </Link>
+                                      ) : (
+                                        <Label
+                                          variant="soft"
+                                          color="default"
+                                          sx={{ height: 20, fontSize: 10 }}
+                                        >
+                                          {sessionClosed ? 'Đã đóng' : 'Hết hạn'}
+                                        </Label>
+                                      )}
+                                    </Box>
+                                  </Box>
+                                );
+                              })}
+                            </Stack>
+                          </Box>
+                        </Collapse>
+                      </Card>
+                    );
+                  })}
+
+                  {hasMore && (
+                    <Box ref={sentinelRef} sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                      {loadingMore && <CircularProgress size={24} />}
+                    </Box>
+                  )}
+                </>
               )}
             </Stack>
-          )
-        )}
-      </Stack>
+          )}
+        </Box>
+      </Box>
 
       {/* ── Sticky payment bar ── */}
       {selectedRegIds.size > 0 && !paymentOpen && (
@@ -562,8 +655,6 @@ export function MyRegistrationsView() {
         open={paymentOpen}
         onClose={() => setPaymentOpen(false)}
         selectedRegs={selectedRegs}
-        name={name}
-        phone={phone}
         onSuccess={() => setSelectedRegIds(new Set())}
       />
     </Container>

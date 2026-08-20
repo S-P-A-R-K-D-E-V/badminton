@@ -1,10 +1,12 @@
 # Agent API — Kết nối cho AI Agent
 
-API dành riêng cho AI agent / automation thao tác toàn quyền với lịch chơi
-(session), sân (court), người chơi (registration) và chi phí (cost) — **kể cả
-lịch đã diễn ra trong quá khứ**. Đây là API riêng biệt với API admin dùng
-cookie (`/api/admin/...`), xác thực bằng API key tĩnh nên phù hợp gọi từ
-server-to-server/agent mà không cần đăng nhập trình duyệt.
+API dành riêng cho AI agent / automation thao tác toàn quyền: CRUD lịch chơi
+(session) + sân (court), CRUD người chơi trong lịch (registration), CRUD chi
+phí từng buổi (cost), tạo mã QR thanh toán (VietQR) và gửi thông báo thanh
+toán vào nhóm Telegram — **kể cả lịch đã diễn ra trong quá khứ**. Đây là API
+riêng biệt với API admin dùng cookie (`/api/admin/...`), xác thực bằng API
+key tĩnh nên phù hợp gọi từ server-to-server/agent mà không cần đăng nhập
+trình duyệt.
 
 ## Xác thực
 
@@ -37,6 +39,10 @@ host trong `k8s/deployment.yaml`).
 | DELETE | `/api/agent/registrations/:id` | Huỷ đăng ký (thêm `?hard=true` để xoá hẳn) |
 | GET | `/api/agent/sessions/:id/cost` | Xem chi phí buổi chơi |
 | PUT | `/api/agent/sessions/:id/cost` | Cập nhật (upsert) chi phí buổi chơi |
+| DELETE | `/api/agent/sessions/:id/cost` | Xoá chi phí đã chốt |
+| POST | `/api/agent/payment-requests` | Tạo yêu cầu thanh toán + mã QR VietQR cho 1 nhóm đăng ký |
+| GET | `/api/agent/payment-requests/:id` | Xem trạng thái 1 yêu cầu thanh toán (PENDING/CONFIRMED/REJECTED) |
+| POST | `/api/agent/payment-requests/:id/notify` | Gửi thông báo thanh toán vào nhóm Telegram (kèm nút xác nhận/hủy cho admin) |
 
 Tất cả body/response là JSON. Lỗi validate trả `400` kèm chi tiết field lỗi
 (`{ error: { fieldErrors, formErrors } }`), lỗi không tìm thấy trả `404`.
@@ -139,10 +145,60 @@ curl -X DELETE -H "x-agent-key: $AGENT_API_KEY" \
 ## 7. Chi phí buổi chơi
 
 ```bash
+# Xem
+curl -H "x-agent-key: $AGENT_API_KEY" \
+  https://domain/api/agent/sessions/SESSION_ID/cost
+
+# Chốt/sửa (upsert — vừa tạo mới vừa cập nhật)
 curl -X PUT -H "x-agent-key: $AGENT_API_KEY" -H "Content-Type: application/json" \
   https://domain/api/agent/sessions/SESSION_ID/cost \
   -d '{"courtFee":300000,"shuttlecockCost":150000,"supplyCost":50000,"otherCost":0,"note":"..."}'
+
+# Xoá (chốt nhầm)
+curl -X DELETE -H "x-agent-key: $AGENT_API_KEY" \
+  https://domain/api/agent/sessions/SESSION_ID/cost
 ```
+
+## 8. Tạo mã QR thanh toán + gửi thông báo Telegram
+
+Chi phí buổi chơi (`cost`) phải được chốt trước (bước 7) — mỗi người
+chơi/`registration` sẽ được tính `costPerPerson = tổng chi phí / số người
+CONFIRMED trong buổi`. `registrationIds` lấy từ `registrations[].id` trong
+`GET /api/agent/sessions/:id` — chỉ chọn được đăng ký `CONFIRMED` và chưa
+`isPaid`.
+
+```bash
+# 1. Tạo yêu cầu thanh toán — trả về mã ngắn (BAD-XXXXXX) + ảnh QR sẵn dùng
+curl -X POST -H "x-agent-key: $AGENT_API_KEY" -H "Content-Type: application/json" \
+  https://domain/api/agent/payment-requests \
+  -d '{"registrationIds": ["REG_ID_1", "REG_ID_2"]}'
+# → { "id": "...", "code": "BAD-K3P9QZ", "totalAmount": 100000,
+#     "qrUrl": "https://img.vietqr.io/image/...", "status": "PENDING", ... }
+```
+
+Nội dung chuyển khoản trên QR chỉ là mã ngắn (`code`) — không lộ tên/SĐT —
+nhưng `id` của yêu cầu vẫn tra lại được đầy đủ registrationIds/tên/SĐT/số
+tiền sau này, kể cả khi không gửi Telegram.
+
+```bash
+# 2. (tuỳ chọn) Gửi thông báo vào nhóm Telegram — kèm nút xác nhận/hủy cho admin
+curl -X POST -H "x-agent-key: $AGENT_API_KEY" \
+  https://domain/api/agent/payment-requests/PAYMENT_REQUEST_ID/notify
+# → { "id": "...", "telegramSent": true }
+
+# 3. Kiểm tra admin đã xác nhận qua Telegram chưa
+curl -H "x-agent-key: $AGENT_API_KEY" \
+  https://domain/api/agent/payment-requests/PAYMENT_REQUEST_ID
+# → status: "PENDING" | "CONFIRMED" | "REJECTED"
+```
+
+Khi admin bấm "✅ Xác nhận đã trả" trên Telegram, toàn bộ `registrationIds`
+trong yêu cầu tự động được đánh dấu `isPaid: true` — không cần agent gọi
+thêm `PUT /api/agent/registrations/:id`.
+
+Bước 2 cần `TELEGRAM_BOT_TOKEN` và `TELEGRAM_CHAT_ID` đã cấu hình (khác với
+`AGENT_API_KEY`) — thiếu 1 trong 2 thì request vẫn `200` nhưng
+`telegramSent: false`, không có tin nhắn nào được gửi.
 
 ---
 

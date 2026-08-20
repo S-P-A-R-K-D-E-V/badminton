@@ -41,3 +41,14 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 
   return NextResponse.json(cost)
 }
+
+// DELETE /api/agent/sessions/:id/cost — xoá chi phí đã chốt (ví dụ chốt nhầm)
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+  if (!isAgentAuthorized(req)) return agentUnauthorized()
+
+  const existing = await prisma.sessionCost.findUnique({ where: { sessionId: params.id } })
+  if (!existing) return NextResponse.json({ error: 'Chưa có chi phí để xoá' }, { status: 404 })
+
+  await prisma.sessionCost.delete({ where: { sessionId: params.id } })
+  return NextResponse.json({ ok: true })
+}
